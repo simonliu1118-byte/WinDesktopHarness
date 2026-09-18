@@ -23,7 +23,7 @@ internal sealed class SettingsForm : Form
         };
 
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(430, 368);
+        ClientSize = new Size(430, 374);
         BackColor = UiTheme.Surface;
         Font = UiTheme.Font();
         FormBorderStyle = FormBorderStyle.None;
@@ -41,30 +41,40 @@ internal sealed class SettingsForm : Form
         subtitle.Location = new Point(labelX, 52);
         Controls.Add(subtitle);
 
+        var headerSeparator = new Panel
+        {
+            Left = labelX,
+            Top = 78,
+            Width = right - labelX,
+            Height = 1,
+            BackColor = UiTheme.Border
+        };
+        Controls.Add(headerSeparator);
+
         var sectionTitle = UiTheme.Label("輸出設定", 11f, UiTheme.Text, FontStyle.Bold);
-        sectionTitle.Location = new Point(labelX, 88);
+        sectionTitle.Location = new Point(labelX, 94);
         Controls.Add(sectionTitle);
 
-        AddRowLabel(this, "儲存方式", labelX, 130);
+        AddRowLabel(this, "儲存方式", labelX, 136);
         _outputMode.DropDownStyle = ComboBoxStyle.DropDownList;
         _outputMode.Items.AddRange(new object[] { "來源旁邊", "固定資料夾", "每批詢問" });
         _outputMode.SelectedItem = Preferences.OutputMode;
         if (_outputMode.SelectedIndex < 0) _outputMode.SelectedIndex = 0;
-        _outputMode.Location = new Point(controlX, 124);
+        _outputMode.Location = new Point(controlX, 130);
         _outputMode.Size = new Size(right - controlX, 28);
         _outputMode.Font = UiTheme.Font(9.8f);
         _outputMode.SelectedIndexChanged += (_, _) => RefreshFolderState();
         Controls.Add(_outputMode);
 
-        AddRowLabel(this, "固定資料夾", labelX, 174);
+        AddRowLabel(this, "固定資料夾", labelX, 180);
         _fixedFolder.Text = Preferences.FixedFolder;
-        _fixedFolder.Location = new Point(controlX, 168);
+        _fixedFolder.Location = new Point(controlX, 174);
         _fixedFolder.Size = new Size(194, 28);
         _fixedFolder.Font = UiTheme.Font(9.8f);
         Controls.Add(_fixedFolder);
 
         _browse.Text = "瀏覽…";
-        _browse.Location = new Point(320, 168);
+        _browse.Location = new Point(320, 174);
         _browse.Size = new Size(84, _fixedFolder.Height);
         _browse.FlatStyle = FlatStyle.Flat;
         _browse.BackColor = UiTheme.Surface;
@@ -75,25 +85,25 @@ internal sealed class SettingsForm : Form
         _browse.Click += (_, _) => BrowseFolder();
         Controls.Add(_browse);
 
-        AddRowLabel(this, "輸出格式", labelX, 218);
+        AddRowLabel(this, "輸出格式", labelX, 224);
         _format.DropDownStyle = ComboBoxStyle.DropDownList;
         _format.Items.AddRange(new object[] { "PNG", "JPG" });
         _format.SelectedItem = Preferences.OutputFormat;
         if (_format.SelectedIndex < 0) _format.SelectedIndex = 0;
-        _format.Location = new Point(controlX, 212);
+        _format.Location = new Point(controlX, 218);
         _format.Size = new Size(132, 28);
         _format.Font = UiTheme.Font(9.8f);
         Controls.Add(_format);
 
         var modeHelp = UiTheme.Label("每批詢問：開始工作前先選一次輸出資料夾。", 8.4f, UiTheme.Muted);
-        modeHelp.Location = new Point(controlX, 249);
+        modeHelp.Location = new Point(controlX, 255);
         modeHelp.MaximumSize = new Size(286, 0);
         Controls.Add(modeHelp);
 
         var separator = new Panel
         {
             Left = labelX,
-            Top = 282,
+            Top = 288,
             Width = right - labelX,
             Height = 1,
             BackColor = UiTheme.Border
@@ -103,21 +113,21 @@ internal sealed class SettingsForm : Form
         _notify.Text = "工作完成時顯示完成提示";
         _notify.Checked = Preferences.NotifyOnComplete;
         _notify.AutoSize = true;
-        _notify.Location = new Point(labelX, 300);
+        _notify.Location = new Point(labelX, 306);
         _notify.Font = UiTheme.Font(9.4f);
         _notify.BackColor = Color.Transparent;
         Controls.Add(_notify);
 
         var cancel = UiTheme.Button("取消");
         cancel.Left = 190;
-        cancel.Top = 326;
+        cancel.Top = 332;
         cancel.Width = 100;
         cancel.Click += (_, _) => DialogResult = DialogResult.Cancel;
         Controls.Add(cancel);
 
         var save = UiTheme.Button("儲存", true);
         save.Left = 304;
-        save.Top = 326;
+        save.Top = 332;
         save.Width = 100;
         save.Click += (_, _) => SaveAndClose();
         Controls.Add(save);
