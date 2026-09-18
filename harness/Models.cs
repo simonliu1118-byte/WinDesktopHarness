@@ -4,7 +4,9 @@ internal sealed record ResultRow(
     string FileName,
     string Status,
     string Detail,
-    string Category = "建立");
+    string Category = "建立",
+    DateTime? CreatedAt = null,
+    string Reference = "");
 
 internal sealed class AppPreferences
 {
