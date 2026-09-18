@@ -7,25 +7,23 @@ namespace WinDesktopHarness;
 
 internal static class PdfExporter
 {
-    private const int PageWidth = 1240;
-    private const int PageHeight = 1754;
-    private const int Margin = 86;
-    private const int RowsPerPage = 18;
+    // ISO A4 at 300 DPI: 210 x 297 mm.
+    private const int PageWidth = 2480;
+    private const int PageHeight = 3508;
+    private const int Margin = 210;
+
+    // A4 in PDF points (72 pt/inch).
+    private const string A4MediaBox = "0 0 595.28 841.89";
 
     public static void Write(string path, IReadOnlyList<ResultRow> sourceRows)
     {
         var rows = sourceRows.Count == 0
-            ? new List<ResultRow> { new("sample-file.dat", "完成", "此列為模擬內容，用於確認 PDF 排版。") }
+            ? new List<ResultRow> { new("sample-file.dat", "完成", "此內容為模擬資料，用於確認 PDF 版面。") }
             : sourceRows.ToList();
 
-        var pageImages = new List<byte[]>();
-        var pageCount = Math.Max(1, (int)Math.Ceiling(rows.Count / (double)RowsPerPage));
-        for (var page = 0; page < pageCount; page++)
-        {
-            var pageRows = rows.Skip(page * RowsPerPage).Take(RowsPerPage).ToList();
-            pageImages.Add(RenderPage(pageRows, page + 1, pageCount, rows.Count));
-        }
-
+        // The public harness intentionally emits one readable report page per
+        // result instead of a dense database-style table.
+        var pageImages = rows.Select((row, index) => RenderPage(row, index + 1, rows.Count)).ToList();
         var tempPath = path + ".tmp";
         try
         {
@@ -36,10 +34,9 @@ internal static class PdfExporter
                 if (check.Read(header) != 4 || header[0] != (byte)'%' || header[1] != (byte)'P' ||
                     header[2] != (byte)'D' || header[3] != (byte)'F')
                 {
-                    throw new InvalidDataException("輸出的檔案不是有效的 PDF。 ");
+                    throw new InvalidDataException("輸出的檔案不是有效的 PDF。");
                 }
             }
-
             File.Move(tempPath, path, true);
         }
         finally
@@ -48,108 +45,134 @@ internal static class PdfExporter
         }
     }
 
-    private static byte[] RenderPage(IReadOnlyList<ResultRow> rows, int pageNumber, int pageCount, int totalRows)
+    private static byte[] RenderPage(ResultRow row, int pageNumber, int pageCount)
     {
         using var bitmap = new Bitmap(PageWidth, PageHeight, PixelFormat.Format24bppRgb);
-        bitmap.SetResolution(150, 150);
+        bitmap.SetResolution(300, 300);
         using var g = Graphics.FromImage(bitmap);
         g.Clear(Color.White);
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
 
-        using var titleFont = new Font("Microsoft JhengHei UI", 24f, FontStyle.Bold, GraphicsUnit.Pixel);
-        using var subtitleFont = new Font("Microsoft JhengHei UI", 14f, FontStyle.Regular, GraphicsUnit.Pixel);
-        using var labelFont = new Font("Microsoft JhengHei UI", 12f, FontStyle.Regular, GraphicsUnit.Pixel);
-        using var bodyFont = new Font("Microsoft JhengHei UI", 13f, FontStyle.Regular, GraphicsUnit.Pixel);
-        using var bodyBold = new Font("Microsoft JhengHei UI", 13f, FontStyle.Bold, GraphicsUnit.Pixel);
-        using var smallFont = new Font("Microsoft JhengHei UI", 10f, FontStyle.Regular, GraphicsUnit.Pixel);
+        using var titleFont = PxFont(82, FontStyle.Bold);
+        using var subtitleFont = PxFont(38);
+        using var sectionFont = PxFont(42, FontStyle.Bold);
+        using var labelFont = PxFont(34, FontStyle.Bold);
+        using var bodyFont = PxFont(44);
+        using var bodyBold = PxFont(48, FontStyle.Bold);
+        using var resultFont = PxFont(58, FontStyle.Bold);
+        using var smallFont = PxFont(30);
 
         using var textBrush = new SolidBrush(Color.FromArgb(31, 41, 55));
         using var mutedBrush = new SolidBrush(Color.FromArgb(102, 112, 133));
         using var accentBrush = new SolidBrush(Color.FromArgb(46, 74, 113));
-        using var softBrush = new SolidBrush(Color.FromArgb(246, 248, 250));
-        using var borderPen = new Pen(Color.FromArgb(222, 226, 232), 1f);
-        using var accentPen = new Pen(Color.FromArgb(46, 74, 113), 4f);
+        using var successBrush = new SolidBrush(Color.FromArgb(33, 130, 92));
+        using var warningBrush = new SolidBrush(Color.FromArgb(170, 73, 55));
+        using var softBrush = new SolidBrush(Color.FromArgb(247, 249, 252));
+        using var successSoft = new SolidBrush(Color.FromArgb(235, 247, 241));
+        using var warningSoft = new SolidBrush(Color.FromArgb(252, 240, 237));
+        using var borderPen = new Pen(Color.FromArgb(220, 224, 230), 3f);
+        using var accentPen = new Pen(Color.FromArgb(46, 74, 113), 10f);
 
+        var contentWidth = PageWidth - Margin * 2;
         var y = Margin;
-        g.DrawString("桌面程式測試報告", titleFont, textBrush, Margin, y);
-        y += 44;
-        g.DrawString("此文件僅用於驗證介面、中文排版與 PDF 匯出流程。", subtitleFont, mutedBrush, Margin, y);
-        y += 52;
+
+        g.DrawString("檔案檢查報告", titleFont, textBrush, Margin, y);
+        y += 108;
+        g.DrawString("Windows 桌面介面測試版", subtitleFont, mutedBrush, Margin, y);
+        y += 92;
         g.DrawLine(accentPen, Margin, y, PageWidth - Margin, y);
-        y += 34;
+        y += 92;
 
-        var summaryRect = new Rectangle(Margin, y, PageWidth - Margin * 2, 100);
-        g.FillRectangle(softBrush, summaryRect);
-        g.DrawRectangle(borderPen, summaryRect);
-        g.DrawString("測試摘要", labelFont, mutedBrush, summaryRect.Left + 22, summaryRect.Top + 16);
-        g.DrawString($"模擬結果 {totalRows} 筆", bodyBold, textBrush, summaryRect.Left + 22, summaryRect.Top + 47);
-        g.DrawString(DateTime.Now.ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture), bodyFont, textBrush,
-            summaryRect.Left + 370, summaryRect.Top + 47);
-        y += 132;
+        g.DrawString("報告資訊", sectionFont, textBrush, Margin, y);
+        y += 76;
+        var infoRect = new Rectangle(Margin, y, contentWidth, 330);
+        g.FillRectangle(softBrush, infoRect);
+        g.DrawRectangle(borderPen, infoRect);
+        DrawInfoRow(g, "檔案", row.FileName, infoRect.Left + 48, infoRect.Top + 44,
+            contentWidth - 96, labelFont, bodyFont, textBrush, mutedBrush);
+        DrawInfoRow(g, "產生時間", DateTime.Now.ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture),
+            infoRect.Left + 48, infoRect.Top + 154, contentWidth - 96,
+            labelFont, bodyFont, textBrush, mutedBrush);
+        y += 410;
 
-        var tableLeft = Margin;
-        var tableWidth = PageWidth - Margin * 2;
-        var colFile = 330;
-        var colStatus = 150;
-        var colDetail = tableWidth - colFile - colStatus;
-        const int headerHeight = 50;
-        const int rowHeight = 66;
+        g.DrawString("檢查結果", sectionFont, textBrush, Margin, y);
+        y += 78;
+        var warning = row.Status is "失敗" or "需注意";
+        var resultRect = new Rectangle(Margin, y, contentWidth, 620);
+        g.FillRectangle(warning ? warningSoft : successSoft, resultRect);
+        g.DrawRectangle(borderPen, resultRect);
 
-        g.FillRectangle(softBrush, tableLeft, y, tableWidth, headerHeight);
-        g.DrawRectangle(borderPen, tableLeft, y, tableWidth, headerHeight);
-        g.DrawString("檔案", bodyBold, textBrush, tableLeft + 14, y + 15);
-        g.DrawString("狀態", bodyBold, textBrush, tableLeft + colFile + 14, y + 15);
-        g.DrawString("說明", bodyBold, textBrush, tableLeft + colFile + colStatus + 14, y + 15);
-        y += headerHeight;
-
-        foreach (var row in rows)
+        var badgeRect = new Rectangle(resultRect.Left + 48, resultRect.Top + 48, 340, 96);
+        using (var badgeBrush = new SolidBrush(warning
+                   ? Color.FromArgb(170, 73, 55)
+                   : Color.FromArgb(33, 130, 92)))
         {
-            var rowRect = new Rectangle(tableLeft, y, tableWidth, rowHeight);
-            g.DrawRectangle(borderPen, rowRect);
-            DrawEllipsized(g, row.FileName, bodyFont, textBrush,
-                new RectangleF(tableLeft + 14, y + 14, colFile - 28, rowHeight - 22));
-            DrawEllipsized(g, row.Status, bodyBold,
-                row.Status == "失敗" ? Brushes.Firebrick : accentBrush,
-                new RectangleF(tableLeft + colFile + 14, y + 14, colStatus - 28, rowHeight - 22));
-            DrawEllipsized(g, row.Detail, bodyFont, textBrush,
-                new RectangleF(tableLeft + colFile + colStatus + 14, y + 14, colDetail - 28, rowHeight - 22));
-            y += rowHeight;
+            g.FillRectangle(badgeBrush, badgeRect);
         }
+        using var badgeFormat = new StringFormat
+        {
+            Alignment = StringAlignment.Center,
+            LineAlignment = StringAlignment.Center
+        };
+        g.DrawString(row.Status, bodyBold, Brushes.White, badgeRect, badgeFormat);
 
-        var footerY = PageHeight - Margin - 30;
-        g.DrawLine(borderPen, Margin, footerY - 16, PageWidth - Margin, footerY - 16);
-        g.DrawString("Generic Windows desktop UI test document", smallFont, mutedBrush, Margin, footerY);
+        g.DrawString(warning ? "結果需要注意" : "檢查完成", resultFont,
+            warning ? warningBrush : successBrush, resultRect.Left + 48, resultRect.Top + 190);
+
+        var detailRect = new RectangleF(resultRect.Left + 48, resultRect.Top + 310,
+            resultRect.Width - 96, 235);
+        using var wrap = new StringFormat
+        {
+            Trimming = StringTrimming.EllipsisWord,
+            FormatFlags = 0,
+            LineAlignment = StringAlignment.Near
+        };
+        g.DrawString(row.Detail, bodyFont, textBrush, detailRect, wrap);
+        y += 720;
+
+        g.DrawString("說明", sectionFont, textBrush, Margin, y);
+        y += 76;
+        var noteRect = new Rectangle(Margin, y, contentWidth, 430);
+        g.FillRectangle(softBrush, noteRect);
+        g.DrawRectangle(borderPen, noteRect);
+        var noteText = "此文件為介面與文件輸出流程的模擬報告，用來確認 A4 尺寸、中文字級、資訊層級與列印閱讀性。";
+        g.DrawString(noteText, bodyFont, textBrush,
+            new RectangleF(noteRect.Left + 48, noteRect.Top + 48, noteRect.Width - 96, noteRect.Height - 96), wrap);
+
+        var footerY = PageHeight - Margin - 52;
+        g.DrawLine(borderPen, Margin, footerY - 38, PageWidth - Margin, footerY - 38);
+        g.DrawString("Desktop UI test document", smallFont, mutedBrush, Margin, footerY);
         var pageText = $"第 {pageNumber} / {pageCount} 頁";
-        var size = g.MeasureString(pageText, smallFont);
-        g.DrawString(pageText, smallFont, mutedBrush, PageWidth - Margin - size.Width, footerY);
+        var pageSize = g.MeasureString(pageText, smallFont);
+        g.DrawString(pageText, smallFont, mutedBrush, PageWidth - Margin - pageSize.Width, footerY);
 
         using var stream = new MemoryStream();
         var codec = ImageCodecInfo.GetImageEncoders().First(c => c.FormatID == ImageFormat.Jpeg.Guid);
         using var parameters = new EncoderParameters(1);
-        parameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 90L);
+        parameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 94L);
         bitmap.Save(stream, codec, parameters);
         return stream.ToArray();
     }
 
-    private static void DrawEllipsized(Graphics g, string text, Font font, Brush brush, RectangleF rect)
+    private static Font PxFont(float pixels, FontStyle style = FontStyle.Regular) =>
+        new("Microsoft JhengHei UI", pixels, style, GraphicsUnit.Pixel);
+
+    private static void DrawInfoRow(Graphics g, string label, string value, int x, int y, int width,
+        Font labelFont, Font bodyFont, Brush textBrush, Brush mutedBrush)
     {
-        using var format = new StringFormat
-        {
-            Trimming = StringTrimming.EllipsisCharacter,
-            FormatFlags = StringFormatFlags.NoWrap,
-            LineAlignment = StringAlignment.Near
-        };
-        g.DrawString(text, font, brush, rect, format);
+        g.DrawString(label, labelFont, mutedBrush, x, y);
+        g.DrawString(value, bodyFont, textBrush,
+            new RectangleF(x + 270, y - 6, width - 270, 82),
+            new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap });
     }
 
     private static void WriteImagePdf(string path, IReadOnlyList<byte[]> jpegPages)
     {
         var objects = new List<byte[]>();
         var pageObjectIds = new List<int>();
-        var imageObjectIds = new List<int>();
-
-        objects.Add(Array.Empty<byte>()); // 1: catalog, filled after page tree id is known.
-        objects.Add(Array.Empty<byte>()); // 2: pages tree.
+        objects.Add(Array.Empty<byte>()); // catalog
+        objects.Add(Array.Empty<byte>()); // pages tree
 
         for (var i = 0; i < jpegPages.Count; i++)
         {
@@ -158,18 +181,17 @@ internal static class PdfExporter
             objects.Add(Array.Empty<byte>());
 
             var imageId = objects.Count + 1;
-            imageObjectIds.Add(imageId);
             objects.Add(Array.Empty<byte>());
 
             var contentId = objects.Count + 1;
-            var content = $"q\n595 0 0 842 0 0 cm\n/Im{i + 1} Do\nQ\n";
+            var content = $"q\n595.28 0 0 841.89 0 0 cm\n/Im{i + 1} Do\nQ\n";
             objects.Add(StreamObject(Encoding.ASCII.GetBytes(content), ""));
 
             var image = jpegPages[i];
             var imageDict = $"/Type /XObject /Subtype /Image /Width {PageWidth} /Height {PageHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode ";
             objects[imageId - 1] = StreamObject(image, imageDict);
 
-            var page = $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im{i + 1} {imageId} 0 R >> >> /Contents {contentId} 0 R >>";
+            var page = $"<< /Type /Page /Parent 2 0 R /MediaBox [{A4MediaBox}] /Resources << /XObject << /Im{i + 1} {imageId} 0 R >> >> /Contents {contentId} 0 R >>";
             objects[pageId - 1] = Encoding.ASCII.GetBytes(page);
         }
 
@@ -180,7 +202,6 @@ internal static class PdfExporter
         using var output = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
         WriteAscii(output, "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
         var offsets = new List<long> { 0 };
-
         for (var i = 0; i < objects.Count; i++)
         {
             offsets.Add(output.Position);
@@ -193,9 +214,7 @@ internal static class PdfExporter
         WriteAscii(output, $"xref\n0 {objects.Count + 1}\n");
         WriteAscii(output, "0000000000 65535 f \n");
         for (var i = 1; i < offsets.Count; i++)
-        {
             WriteAscii(output, $"{offsets[i]:0000000000} 00000 n \n");
-        }
         WriteAscii(output, $"trailer\n<< /Size {objects.Count + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
     }
 
