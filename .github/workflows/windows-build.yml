@@ -1,0 +1,55 @@
+name: Windows build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build
+        shell: pwsh
+        run: dotnet build harness/WinDesktopHarness.csproj -c Release
+
+      - name: Publish standalone Windows x64 executable
+        shell: pwsh
+        run: >-
+          dotnet publish harness/WinDesktopHarness.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -o publish
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact | Out-Null
+          Copy-Item publish/WinDesktopHarness.exe artifact/WinDesktopHarness.exe
+          @"
+          Windows Desktop Harness
+
+          This executable contains only synthetic UI test behavior.
+          Extract and run WinDesktopHarness.exe.
+          "@ | Set-Content artifact/README.txt -Encoding utf8
+          Compress-Archive -Path artifact/* -DestinationPath WinDesktopHarness-Windows-x64.zip -Force
+
+      - name: Upload test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinDesktopHarness-Windows-x64
+          path: WinDesktopHarness-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 7
