@@ -8,63 +8,44 @@ internal sealed class RecordPage : UserControl
     private readonly TextBox _keyword = new();
     private readonly ComboBox _range = new();
     private readonly ComboBox _status = new();
-    private readonly DataGridView _grid = new();
-    private readonly Label _count = new();
+    private readonly ListView _list = new();
     private readonly List<ResultRow> _rows = new();
+    private readonly Button _search;
+    private readonly Button _clear;
 
     public RecordPage(string category)
     {
         _category = category;
         Dock = DockStyle.Fill;
-        BackColor = UiTheme.Window;
+        BackColor = UiTheme.Surface;
         Font = UiTheme.Font();
 
-        var title = UiTheme.Label(category == "建立" ? "建立紀錄" : "驗證紀錄", 15f, UiTheme.Text, FontStyle.Bold);
-        title.Location = new Point(24, 20);
-        Controls.Add(title);
-
-        var subtitle = UiTheme.Label(
-            category == "建立"
-                ? "查詢曾完成的建立作業。雙擊清單可查看完整模擬內容。"
-                : "查詢曾完成的驗證作業。雙擊清單可查看完整模擬內容。",
-            9.2f, UiTheme.Muted);
-        subtitle.Location = new Point(25, 52);
-        Controls.Add(subtitle);
-
-        var filter = new Panel
-        {
-            Left = 22,
-            Top = 86,
-            Height = 70,
-            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-            BackColor = UiTheme.Surface
-        };
-        filter.Width = Math.Max(600, ClientSize.Width - 44);
-        Controls.Add(filter);
+        const int left = 22;
+        const int top = 16;
 
         var keyLabel = UiTheme.Label("關鍵字", 9.2f, UiTheme.Text, FontStyle.Bold);
-        keyLabel.Location = new Point(16, 12);
-        filter.Controls.Add(keyLabel);
-        _keyword.Location = new Point(16, 35);
+        keyLabel.Location = new Point(left, top);
+        Controls.Add(keyLabel);
+        _keyword.Location = new Point(left, top + 24);
         _keyword.Size = new Size(280, 27);
         _keyword.Font = UiTheme.Font(9.5f);
         _keyword.PlaceholderText = category == "建立" ? "參考編號 / 檔名" : "檔名 / 結果";
-        filter.Controls.Add(_keyword);
+        Controls.Add(_keyword);
 
         var rangeLabel = UiTheme.Label("日期", 9.2f, UiTheme.Text, FontStyle.Bold);
-        rangeLabel.Location = new Point(312, 12);
-        filter.Controls.Add(rangeLabel);
+        rangeLabel.Location = new Point(318, top);
+        Controls.Add(rangeLabel);
         _range.DropDownStyle = ComboBoxStyle.DropDownList;
         _range.Items.AddRange(new object[] { "全部", "今天", "最近 7 天", "最近 30 天" });
         _range.SelectedIndex = 0;
-        _range.Location = new Point(312, 35);
-        _range.Size = new Size(130, 27);
+        _range.Location = new Point(318, top + 24);
+        _range.Size = new Size(132, 27);
         _range.Font = UiTheme.Font(9.5f);
-        filter.Controls.Add(_range);
+        Controls.Add(_range);
 
         var statusLabel = UiTheme.Label(category == "建立" ? "狀態" : "結果", 9.2f, UiTheme.Text, FontStyle.Bold);
-        statusLabel.Location = new Point(456, 12);
-        filter.Controls.Add(statusLabel);
+        statusLabel.Location = new Point(466, top);
+        Controls.Add(statusLabel);
         _status.DropDownStyle = ComboBoxStyle.DropDownList;
         _status.Items.Add("全部");
         if (category == "建立")
@@ -72,52 +53,46 @@ internal sealed class RecordPage : UserControl
         else
             _status.Items.AddRange(new object[] { "驗證成功", "驗證失敗" });
         _status.SelectedIndex = 0;
-        _status.Location = new Point(456, 35);
-        _status.Size = new Size(130, 27);
+        _status.Location = new Point(466, top + 24);
+        _status.Size = new Size(132, 27);
         _status.Font = UiTheme.Font(9.5f);
-        filter.Controls.Add(_status);
+        Controls.Add(_status);
 
-        var search = UiTheme.Button("查詢", true);
-        search.Location = new Point(602, 28);
-        search.Size = new Size(92, 34);
-        search.Click += (_, _) => ApplyFilter();
-        filter.Controls.Add(search);
+        _search = UiTheme.Button("查詢", true);
+        _search.Size = new Size(92, 34);
+        _search.Top = top + 18;
+        _search.Click += (_, _) => ApplyFilter();
+        Controls.Add(_search);
 
-        var clear = UiTheme.Button("清除");
-        clear.Location = new Point(704, 28);
-        clear.Size = new Size(92, 34);
-        clear.Click += (_, _) =>
+        _clear = UiTheme.Button("清除");
+        _clear.Size = new Size(92, 34);
+        _clear.Top = top + 18;
+        _clear.Click += (_, _) =>
         {
             _keyword.Clear();
             _range.SelectedIndex = 0;
             _status.SelectedIndex = 0;
             ApplyFilter();
         };
-        filter.Controls.Add(clear);
+        Controls.Add(_clear);
 
-        _count.Text = "0 筆";
-        _count.AutoSize = true;
-        _count.ForeColor = UiTheme.Muted;
-        _count.Font = UiTheme.Font(9f);
-        _count.Location = new Point(24, 170);
-        Controls.Add(_count);
-
-        ConfigureGrid();
-        _grid.Left = 22;
-        _grid.Top = 196;
-        _grid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        _grid.Width = Math.Max(620, ClientSize.Width - 44);
-        _grid.Height = Math.Max(260, ClientSize.Height - 218);
-        Controls.Add(_grid);
-
-        filter.Resize += (_, _) => LayoutFilter(filter, search, clear);
-        Resize += (_, _) =>
+        var separator = new Panel
         {
-            filter.Width = Math.Max(600, ClientSize.Width - 44);
-            _grid.Width = Math.Max(620, ClientSize.Width - 44);
-            _grid.Height = Math.Max(260, ClientSize.Height - 218);
-            LayoutFilter(filter, search, clear);
+            Left = left,
+            Top = 78,
+            Height = 1,
+            BackColor = UiTheme.Border,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
+        Controls.Add(separator);
+
+        ConfigureList();
+        _list.Left = left;
+        _list.Top = 92;
+        _list.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+        Controls.Add(_list);
+
+        Resize += (_, _) => LayoutPage(separator);
         _keyword.KeyDown += (_, e) =>
         {
             if (e.KeyCode == Keys.Enter)
@@ -126,12 +101,14 @@ internal sealed class RecordPage : UserControl
                 e.SuppressKeyPress = true;
             }
         };
-        _grid.CellDoubleClick += (_, e) =>
+        _list.DoubleClick += (_, _) =>
         {
-            if (e.RowIndex < 0 || e.RowIndex >= _grid.Rows.Count) return;
-            if (_grid.Rows[e.RowIndex].Tag is not ResultRow row) return;
-            ShowDetails(row);
+            if (_list.SelectedItems.Count != 1) return;
+            if (_list.SelectedItems[0].Tag is ResultRow row)
+                ShowDetails(row);
         };
+
+        LayoutPage(separator);
     }
 
     public void SetRows(IEnumerable<ResultRow> rows)
@@ -148,41 +125,42 @@ internal sealed class RecordPage : UserControl
         ApplyFilter();
     }
 
-    private static void LayoutFilter(Panel filter, Button search, Button clear)
+    private void ConfigureList()
     {
-        clear.Left = filter.ClientSize.Width - 108;
-        search.Left = clear.Left - 102;
+        _list.View = View.Details;
+        _list.FullRowSelect = true;
+        _list.HideSelection = false;
+        _list.MultiSelect = false;
+        _list.GridLines = true;
+        _list.HeaderStyle = ColumnHeaderStyle.Clickable;
+        _list.BorderStyle = BorderStyle.FixedSingle;
+        _list.BackColor = Color.White;
+        _list.ForeColor = UiTheme.Text;
+        _list.Font = UiTheme.Font(9.4f);
+        _list.UseCompatibleStateImageBehavior = false;
+
+        _list.Columns.Add("時間", 150, HorizontalAlignment.Left);
+        _list.Columns.Add("參考編號", 130, HorizontalAlignment.Left);
+        _list.Columns.Add("檔案", 260, HorizontalAlignment.Left);
+        _list.Columns.Add(_category == "建立" ? "狀態" : "結果", 130, HorizontalAlignment.Left);
+        _list.Columns.Add("說明", 280, HorizontalAlignment.Left);
     }
 
-    private void ConfigureGrid()
+    private void LayoutPage(Panel separator)
     {
-        _grid.BackgroundColor = UiTheme.Surface;
-        _grid.BorderStyle = BorderStyle.FixedSingle;
-        _grid.ReadOnly = true;
-        _grid.AllowUserToAddRows = false;
-        _grid.AllowUserToDeleteRows = false;
-        _grid.AllowUserToResizeRows = false;
-        _grid.RowHeadersVisible = false;
-        _grid.MultiSelect = false;
-        _grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-        _grid.AutoGenerateColumns = false;
-        _grid.EnableHeadersVisualStyles = false;
-        _grid.ColumnHeadersHeight = 36;
-        _grid.RowTemplate.Height = 34;
-        _grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(244, 246, 249);
-        _grid.ColumnHeadersDefaultCellStyle.ForeColor = UiTheme.Text;
-        _grid.ColumnHeadersDefaultCellStyle.Font = UiTheme.Font(9.3f, FontStyle.Bold);
-        _grid.DefaultCellStyle.Font = UiTheme.Font(9.3f);
-        _grid.DefaultCellStyle.ForeColor = UiTheme.Text;
-        _grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(228, 235, 245);
-        _grid.DefaultCellStyle.SelectionForeColor = UiTheme.Text;
-        _grid.GridColor = Color.FromArgb(229, 232, 236);
+        var width = Math.Max(720, ClientSize.Width - 44);
+        separator.Width = width;
+        _clear.Left = Math.Max(620, ClientSize.Width - 22 - _clear.Width);
+        _search.Left = _clear.Left - 10 - _search.Width;
 
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "時間", Width = 145 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "參考編號", Width = 125 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "檔案", Width = 260 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = _category == "建立" ? "狀態" : "結果", Width = 130 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "說明", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
+        _list.Width = width;
+        _list.Height = Math.Max(300, ClientSize.Height - _list.Top - 20);
+
+        if (_list.Columns.Count == 5)
+        {
+            var fixedWidth = _list.Columns[0].Width + _list.Columns[1].Width + _list.Columns[2].Width + _list.Columns[3].Width;
+            _list.Columns[4].Width = Math.Max(180, _list.ClientSize.Width - fixedWidth - 6);
+        }
     }
 
     private void ApplyFilter()
@@ -212,15 +190,31 @@ internal sealed class RecordPage : UserControl
             return dateOk && keywordOk && statusOk;
         });
 
-        var visible = filtered.ToList();
-        _grid.Rows.Clear();
-        foreach (var row in visible)
+        _list.BeginUpdate();
+        try
         {
-            var time = (row.CreatedAt ?? DateTime.Now).ToString("yyyy/MM/dd HH:mm");
-            var index = _grid.Rows.Add(time, row.Reference, row.FileName, row.Status, row.Detail);
-            _grid.Rows[index].Tag = row;
+            _list.Items.Clear();
+            var index = 0;
+            foreach (var row in filtered)
+            {
+                var time = (row.CreatedAt ?? DateTime.Now).ToString("yyyy/MM/dd HH:mm");
+                var item = new ListViewItem(time)
+                {
+                    Tag = row,
+                    BackColor = index % 2 == 0 ? Color.White : Color.FromArgb(246, 249, 252)
+                };
+                item.SubItems.Add(row.Reference);
+                item.SubItems.Add(row.FileName);
+                item.SubItems.Add(row.Status);
+                item.SubItems.Add(row.Detail);
+                _list.Items.Add(item);
+                index++;
+            }
         }
-        _count.Text = $"{visible.Count} 筆";
+        finally
+        {
+            _list.EndUpdate();
+        }
     }
 
     private void ShowDetails(ResultRow row)
