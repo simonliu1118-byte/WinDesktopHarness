@@ -5,7 +5,6 @@ namespace WinDesktopHarness;
 internal sealed class MainForm : Form
 {
     private readonly Button _settingsButton;
-    private readonly Button _historyButton;
     private readonly Button _pickGenerateButton;
     private readonly Button _startButton;
     private readonly Button _pickInspectButton;
@@ -20,21 +19,23 @@ internal sealed class MainForm : Form
     private readonly Label _inspectBadge;
     private readonly Label _inspectHeadline;
     private readonly Label _inspectDetail;
+    private readonly RecordPage _creationRecords;
+    private readonly RecordPage _verificationRecords;
 
     private readonly List<string> _selectedFiles = new();
-    private readonly List<ResultRow> _history = new();
     private CancellationTokenSource? _workCancellation;
     private bool _closeAfterWork;
     private string? _inspectionFile;
     private ResultRow? _inspectionResult;
     private AppPreferences _preferences = new();
+    private int _referenceSequence;
 
     public MainForm()
     {
         Text = "Desktop Workflow Preview";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(1000, 760);
-        MinimumSize = new Size(900, 700);
+        ClientSize = new Size(1000, 780);
+        MinimumSize = new Size(900, 720);
         BackColor = UiTheme.Window;
         Font = UiTheme.Font();
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -42,7 +43,7 @@ internal sealed class MainForm : Form
         var header = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 78,
+            Height = 72,
             BackColor = UiTheme.Surface
         };
         Controls.Add(header);
@@ -50,20 +51,36 @@ internal sealed class MainForm : Form
         var title = UiTheme.Label("桌面工具預覽", 17f, UiTheme.Text, FontStyle.Bold);
         title.Location = new Point(26, 14);
         header.Controls.Add(title);
-        var subtitle = UiTheme.Label("上方建立檔案，下方檢查檔案；主要操作都在同一頁完成。", 9.4f, UiTheme.Muted);
-        subtitle.Location = new Point(27, 47);
+        var subtitle = UiTheme.Label("建立與檢查集中在主畫面，歷史資料分頁查詢。", 9.3f, UiTheme.Muted);
+        subtitle.Location = new Point(27, 45);
         header.Controls.Add(subtitle);
 
         _settingsButton = UiTheme.Button("設定…");
         _settingsButton.Size = new Size(92, 34);
         _settingsButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        _settingsButton.Location = new Point(ClientSize.Width - 118, 22);
+        _settingsButton.Location = new Point(ClientSize.Width - 118, 19);
         header.Controls.Add(_settingsButton);
-        _historyButton = UiTheme.Button("紀錄");
-        _historyButton.Size = new Size(82, 34);
-        _historyButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        _historyButton.Location = new Point(ClientSize.Width - 210, 22);
-        header.Controls.Add(_historyButton);
+
+        var tabs = new TabControl
+        {
+            Dock = DockStyle.Fill,
+            Font = UiTheme.Font(10f, FontStyle.Bold),
+            Padding = new Point(18, 7)
+        };
+        Controls.Add(tabs);
+        tabs.BringToFront();
+
+        var mainTab = new TabPage("主畫面") { BackColor = UiTheme.Window, Padding = new Padding(0) };
+        var creationTab = new TabPage("建立紀錄") { BackColor = UiTheme.Window, Padding = new Padding(0) };
+        var verificationTab = new TabPage("驗證紀錄") { BackColor = UiTheme.Window, Padding = new Padding(0) };
+        tabs.TabPages.Add(mainTab);
+        tabs.TabPages.Add(creationTab);
+        tabs.TabPages.Add(verificationTab);
+
+        _creationRecords = new RecordPage("建立");
+        _verificationRecords = new RecordPage("驗證");
+        creationTab.Controls.Add(_creationRecords);
+        verificationTab.Controls.Add(_verificationRecords);
 
         var stack = new FlowLayoutPanel
         {
@@ -74,8 +91,7 @@ internal sealed class MainForm : Form
             BackColor = UiTheme.Window,
             Padding = new Padding(24, 22, 24, 24)
         };
-        Controls.Add(stack);
-        stack.BringToFront();
+        mainTab.Controls.Add(stack);
 
         var createCard = new Panel
         {
@@ -213,24 +229,24 @@ internal sealed class MainForm : Form
             BackColor = Color.FromArgb(247, 249, 252)
         };
         inspectCard.Controls.Add(resultCard);
+        _inspectHeadline = UiTheme.Label("選擇檔案後開始檢查", 14f, UiTheme.Text, FontStyle.Bold);
+        _inspectHeadline.Location = new Point(20, 18);
+        _inspectHeadline.MaximumSize = new Size(460, 0);
+        resultCard.Controls.Add(_inspectHeadline);
         _inspectBadge = new Label
         {
-            Text = "尚未檢查",
+            Text = "待檢查",
             AutoSize = false,
             TextAlign = ContentAlignment.MiddleCenter,
-            Location = new Point(20, 18),
-            Size = new Size(104, 28),
-            Font = UiTheme.Font(8.8f, FontStyle.Bold),
+            Location = new Point(20, 57),
+            Size = new Size(118, 30),
+            Font = UiTheme.Font(9f, FontStyle.Bold),
             ForeColor = UiTheme.Muted,
             BackColor = Color.FromArgb(235, 238, 242)
         };
         resultCard.Controls.Add(_inspectBadge);
-        _inspectHeadline = UiTheme.Label("選擇檔案後開始檢查", 13f, UiTheme.Text, FontStyle.Bold);
-        _inspectHeadline.Location = new Point(20, 62);
-        _inspectHeadline.MaximumSize = new Size(460, 0);
-        resultCard.Controls.Add(_inspectHeadline);
         _inspectDetail = UiTheme.Label("結果、說明與後續操作會集中顯示在這裡。", 9.3f, UiTheme.Muted);
-        _inspectDetail.Location = new Point(20, 98);
+        _inspectDetail.Location = new Point(20, 105);
         _inspectDetail.MaximumSize = new Size(460, 0);
         resultCard.Controls.Add(_inspectDetail);
 
@@ -259,7 +275,6 @@ internal sealed class MainForm : Form
         _inspectButton.Click += async (_, _) => await InspectSelectedAsync();
         _reportButton.Click += (_, _) => ExportInspectionReport();
         _settingsButton.Click += (_, _) => ShowSettings();
-        _historyButton.Click += (_, _) => ShowHistory();
         AttachDrop(createDrop, multiple: true);
         AttachDrop(inspectDrop, multiple: false);
         FormClosing += OnFormClosing;
@@ -423,11 +438,15 @@ internal sealed class MainForm : Form
                 await Task.Delay(480, token);
                 var fileName = Path.GetFileName(_selectedFiles[index]);
                 var failed = fileName.Contains("fail", StringComparison.OrdinalIgnoreCase);
-                var row = failed
-                    ? new ResultRow(fileName, "失敗", "模擬失敗，用於確認錯誤狀態的呈現方式。")
-                    : new ResultRow(fileName, "完成", "模擬處理完成。");
+                var row = new ResultRow(
+                    fileName,
+                    failed ? "失敗" : "完成",
+                    failed ? "模擬失敗，用於確認錯誤狀態的呈現方式。" : "模擬處理完成。",
+                    "建立",
+                    DateTime.Now,
+                    NextReference("R"));
                 batchResults.Add(row);
-                _history.Add(row);
+                _creationRecords.AddRow(row);
                 _progress.Value = index + 1;
                 _generateStatus.Text = $"正在處理… {index + 1} / {_selectedFiles.Count}";
                 var success = batchResults.Count(x => x.Status == "完成");
@@ -481,7 +500,7 @@ internal sealed class MainForm : Form
         _inspectionFile = path;
         _inspectionResult = null;
         _inspectSelection.Text = Path.GetFileName(path);
-        SetInspectionIdle("已選擇檔案", "按「開始檢查」取得結果。", UiTheme.Accent);
+        SetInspectionIdle("選擇檔案後開始檢查", "按「開始檢查」取得結果。", UiTheme.Accent);
         UpdateActionState();
     }
 
@@ -491,34 +510,37 @@ internal sealed class MainForm : Form
         _inspectButton.Enabled = false;
         _pickInspectButton.Enabled = false;
         _reportButton.Enabled = false;
+        _inspectHeadline.Text = "正在檢查檔案…";
         _inspectBadge.Text = "檢查中";
         _inspectBadge.ForeColor = UiTheme.Accent;
         _inspectBadge.BackColor = Color.FromArgb(232, 239, 248);
-        _inspectHeadline.Text = "正在檢查檔案…";
         _inspectDetail.Text = "請稍候，完成後結果會顯示在這裡。";
 
         await Task.Delay(650);
 
         var fileName = Path.GetFileName(_inspectionFile);
-        var flagged = fileName.Contains("fail", StringComparison.OrdinalIgnoreCase);
-        _inspectionResult = flagged
-            ? new ResultRow(fileName, "需注意", "這是模擬結果，用於確認警示資訊的視覺層級。")
-            : new ResultRow(fileName, "完成", "這是模擬結果，用於確認結果與報告操作流程。");
-        _history.Add(_inspectionResult);
+        var failed = fileName.Contains("fail", StringComparison.OrdinalIgnoreCase);
+        _inspectionResult = new ResultRow(
+            fileName,
+            failed ? "驗證失敗" : "驗證成功",
+            failed ? "這是模擬失敗結果，用於確認警示資訊的視覺層級。" : "這是模擬成功結果，用於確認結果與報告操作流程。",
+            "驗證",
+            DateTime.Now,
+            NextReference("Q"));
+        _verificationRecords.AddRow(_inspectionResult);
 
-        if (flagged)
+        _inspectHeadline.Text = "檢查完成";
+        if (failed)
         {
-            _inspectBadge.Text = "需注意";
-            _inspectBadge.ForeColor = UiTheme.Danger;
-            _inspectBadge.BackColor = Color.FromArgb(252, 238, 238);
-            _inspectHeadline.Text = "檢查完成，結果需要注意";
+            _inspectBadge.Text = "驗證失敗";
+            _inspectBadge.ForeColor = Color.White;
+            _inspectBadge.BackColor = UiTheme.Danger;
         }
         else
         {
-            _inspectBadge.Text = "完成";
-            _inspectBadge.ForeColor = UiTheme.Success;
-            _inspectBadge.BackColor = Color.FromArgb(233, 247, 240);
-            _inspectHeadline.Text = "檢查完成";
+            _inspectBadge.Text = "驗證成功";
+            _inspectBadge.ForeColor = Color.White;
+            _inspectBadge.BackColor = UiTheme.Success;
         }
         _inspectDetail.Text = _inspectionResult.Detail;
         UpdateActionState();
@@ -559,13 +581,6 @@ internal sealed class MainForm : Form
         RefreshOutputSummary();
     }
 
-    private void ShowHistory()
-    {
-        if (_workCancellation is not null) return;
-        using var dialog = new HistoryForm(_history);
-        dialog.ShowDialog(this);
-    }
-
     private void RefreshOutputSummary()
     {
         _outputSummary.Text = _preferences.OutputMode switch
@@ -578,10 +593,10 @@ internal sealed class MainForm : Form
 
     private void SetInspectionIdle(string headline, string detail, Color color)
     {
+        _inspectHeadline.Text = headline;
         _inspectBadge.Text = "待檢查";
         _inspectBadge.ForeColor = color;
         _inspectBadge.BackColor = Color.FromArgb(235, 240, 247);
-        _inspectHeadline.Text = headline;
         _inspectDetail.Text = detail;
     }
 
@@ -592,10 +607,15 @@ internal sealed class MainForm : Form
         _startButton.Enabled = busy || _selectedFiles.Count > 0;
         _pickGenerateButton.Enabled = !busy;
         _settingsButton.Enabled = !busy;
-        _historyButton.Enabled = !busy;
         _pickInspectButton.Enabled = !busy;
         _inspectButton.Enabled = !busy && _inspectionFile is not null;
         _reportButton.Enabled = !busy && _inspectionResult is not null;
+    }
+
+    private string NextReference(string prefix)
+    {
+        _referenceSequence++;
+        return $"{prefix}-{_referenceSequence:000000}";
     }
 
     private void OnFormClosing(object? sender, FormClosingEventArgs e)
