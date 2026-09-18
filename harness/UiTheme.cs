@@ -50,4 +50,17 @@ internal static class UiTheme
             BackColor = Color.Transparent
         };
     }
+
+    public static void EnlargeTabs(Control root)
+    {
+        foreach (Control child in root.Controls)
+        {
+            if (child is TabControl tabs)
+            {
+                tabs.Font = Font(11.5f, FontStyle.Bold);
+                tabs.Padding = new Point(20, 8);
+            }
+            EnlargeTabs(child);
+        }
+    }
 }
