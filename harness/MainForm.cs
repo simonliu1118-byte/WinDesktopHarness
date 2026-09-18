@@ -4,245 +4,352 @@ namespace WinDesktopHarness;
 
 internal sealed class MainForm : Form
 {
-    private readonly Button _pickButton;
-    private readonly Button _startButton;
-    private readonly Button _inspectButton;
-    private readonly Button _exportButton;
-    private readonly Button _historyButton;
     private readonly Button _settingsButton;
-    private readonly DataGridView _grid;
-    private readonly Label _statusLabel;
+    private readonly Button _historyButton;
+    private readonly Button _pickGenerateButton;
+    private readonly Button _startButton;
+    private readonly Button _pickInspectButton;
+    private readonly Button _inspectButton;
+    private readonly Button _reportButton;
+    private readonly Label _generateSelection;
+    private readonly Label _outputSummary;
+    private readonly Label _generateStatus;
+    private readonly Label _generateResultSummary;
     private readonly ProgressBar _progress;
-    private readonly Label _pendingValue;
-    private readonly Label _doneValue;
-    private readonly Label _failedValue;
+    private readonly Label _inspectSelection;
+    private readonly Label _inspectBadge;
+    private readonly Label _inspectHeadline;
+    private readonly Label _inspectDetail;
 
     private readonly List<string> _selectedFiles = new();
-    private readonly List<ResultRow> _results = new();
+    private readonly List<ResultRow> _history = new();
     private CancellationTokenSource? _workCancellation;
     private bool _closeAfterWork;
+    private string? _inspectionFile;
+    private ResultRow? _inspectionResult;
     private AppPreferences _preferences = new();
 
     public MainForm()
     {
         Text = "Desktop Workflow Preview";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(1040, 720);
-        MinimumSize = new Size(900, 620);
+        ClientSize = new Size(1000, 760);
+        MinimumSize = new Size(900, 700);
         BackColor = UiTheme.Window;
         Font = UiTheme.Font();
-        AllowDrop = true;
         AutoScaleMode = AutoScaleMode.Dpi;
 
         var header = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 72,
-            BackColor = UiTheme.Surface,
-            Padding = new Padding(22, 15, 22, 10)
+            Height = 78,
+            BackColor = UiTheme.Surface
         };
         Controls.Add(header);
 
-        var title = UiTheme.Label("桌面工作流程預覽", 16f, UiTheme.Text, FontStyle.Bold);
-        title.Location = new Point(22, 13);
+        var title = UiTheme.Label("桌面工具預覽", 17f, UiTheme.Text, FontStyle.Bold);
+        title.Location = new Point(26, 14);
         header.Controls.Add(title);
-
-        var subtitle = UiTheme.Label("用假資料測試操作流程、批次狀態、結果呈現與文件匯出。", 9.2f, UiTheme.Muted);
-        subtitle.Location = new Point(23, 43);
+        var subtitle = UiTheme.Label("上方建立檔案，下方檢查檔案；主要操作都在同一頁完成。", 9.4f, UiTheme.Muted);
+        subtitle.Location = new Point(27, 47);
         header.Controls.Add(subtitle);
 
-        var toolbar = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            Height = 58,
-            Padding = new Padding(20, 11, 20, 8),
-            BackColor = UiTheme.Window,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false
-        };
-        Controls.Add(toolbar);
-        toolbar.BringToFront();
-
-        _pickButton = UiTheme.Button("選擇檔案…");
-        _startButton = UiTheme.Button("開始處理", true);
-        _inspectButton = UiTheme.Button("檢查檔案…");
-        _exportButton = UiTheme.Button("匯出 PDF…");
-        _exportButton.Width = 118;
-        _historyButton = UiTheme.Button("紀錄");
-        _historyButton.Width = 88;
         _settingsButton = UiTheme.Button("設定…");
-        _settingsButton.Width = 88;
-        toolbar.Controls.AddRange(new Control[]
-        {
-            _pickButton, _startButton, _inspectButton, _exportButton, _historyButton, _settingsButton
-        });
+        _settingsButton.Size = new Size(92, 34);
+        _settingsButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _settingsButton.Location = new Point(ClientSize.Width - 118, 22);
+        header.Controls.Add(_settingsButton);
+        _historyButton = UiTheme.Button("紀錄");
+        _historyButton.Size = new Size(82, 34);
+        _historyButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _historyButton.Location = new Point(ClientSize.Width - 210, 22);
+        header.Controls.Add(_historyButton);
 
-        var body = new Panel
+        var stack = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(20, 0, 20, 16),
-            BackColor = UiTheme.Window
-        };
-        Controls.Add(body);
-        body.BringToFront();
-
-        var summary = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            Height = 84,
-            ColumnCount = 3,
-            RowCount = 1,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoScroll = true,
             BackColor = UiTheme.Window,
-            Padding = new Padding(0, 0, 0, 10)
+            Padding = new Padding(24, 22, 24, 24)
         };
-        summary.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.333f));
-        summary.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.333f));
-        summary.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.333f));
-        body.Controls.Add(summary);
+        Controls.Add(stack);
+        stack.BringToFront();
 
-        _pendingValue = AddSummaryCard(summary, 0, "待處理", "0");
-        _doneValue = AddSummaryCard(summary, 1, "完成", "0");
-        _failedValue = AddSummaryCard(summary, 2, "失敗", "0");
+        var createCard = new Panel
+        {
+            Width = 930,
+            Height = 286,
+            BackColor = UiTheme.Surface,
+            Margin = new Padding(0, 0, 0, 18),
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        stack.Controls.Add(createCard);
+
+        var createStep = StepLabel("1");
+        createStep.Location = new Point(22, 17);
+        createCard.Controls.Add(createStep);
+        var createTitle = UiTheme.Label("建立檔案", 13.5f, UiTheme.Text, FontStyle.Bold);
+        createTitle.Location = new Point(62, 18);
+        createCard.Controls.Add(createTitle);
+        var createHelp = UiTheme.Label("可一次選擇多個檔案。完成後保留本批結果與輸出方式摘要。", 9f, UiTheme.Muted);
+        createHelp.Location = new Point(63, 47);
+        createCard.Controls.Add(createHelp);
+
+        var createDrop = DropPanel();
+        createDrop.Location = new Point(22, 82);
+        createDrop.Size = new Size(585, 104);
+        createDrop.AllowDrop = true;
+        createCard.Controls.Add(createDrop);
+        var dropTitle = UiTheme.Label("拖放檔案到這裡", 11f, UiTheme.Text, FontStyle.Bold);
+        dropTitle.Location = new Point(18, 17);
+        createDrop.Controls.Add(dropTitle);
+        var dropHelp = UiTheme.Label("或使用右側按鈕選擇檔案", 8.8f, UiTheme.Muted);
+        dropHelp.Location = new Point(18, 45);
+        createDrop.Controls.Add(dropHelp);
+        _generateSelection = UiTheme.Label("尚未選擇檔案", 9.2f, UiTheme.Accent, FontStyle.Bold);
+        _generateSelection.Location = new Point(18, 72);
+        _generateSelection.AutoSize = false;
+        _generateSelection.AutoEllipsis = true;
+        _generateSelection.Size = new Size(390, 23);
+        createDrop.Controls.Add(_generateSelection);
+        _pickGenerateButton = UiTheme.Button("選擇檔案…");
+        _pickGenerateButton.Location = new Point(455, 49);
+        _pickGenerateButton.Size = new Size(112, 36);
+        createDrop.Controls.Add(_pickGenerateButton);
+
+        var outputCard = new Panel
+        {
+            Location = new Point(621, 82),
+            Size = new Size(286, 104),
+            BackColor = Color.FromArgb(247, 249, 252)
+        };
+        createCard.Controls.Add(outputCard);
+        var outputTitle = UiTheme.Label("輸出方式", 9.2f, UiTheme.Muted, FontStyle.Bold);
+        outputTitle.Location = new Point(16, 14);
+        outputCard.Controls.Add(outputTitle);
+        _outputSummary = UiTheme.Label("來源旁邊 · PNG", 10.2f, UiTheme.Text, FontStyle.Bold);
+        _outputSummary.Location = new Point(16, 42);
+        _outputSummary.MaximumSize = new Size(250, 0);
+        outputCard.Controls.Add(_outputSummary);
+        var outputHint = UiTheme.Label("可從右上角「設定」調整", 8.5f, UiTheme.Muted);
+        outputHint.Location = new Point(16, 74);
+        outputCard.Controls.Add(outputHint);
+
+        _generateStatus = UiTheme.Label("選擇檔案後即可開始。", 9.2f, UiTheme.Muted);
+        _generateStatus.Location = new Point(22, 203);
+        _generateStatus.AutoSize = false;
+        _generateStatus.AutoEllipsis = true;
+        _generateStatus.Size = new Size(500, 22);
+        createCard.Controls.Add(_generateStatus);
+        _progress = new ProgressBar
+        {
+            Location = new Point(22, 232),
+            Size = new Size(585, 10),
+            Minimum = 0,
+            Maximum = 1,
+            Value = 0,
+            Style = ProgressBarStyle.Continuous
+        };
+        createCard.Controls.Add(_progress);
+        _generateResultSummary = UiTheme.Label("尚無本批結果", 8.8f, UiTheme.Muted);
+        _generateResultSummary.Location = new Point(22, 250);
+        _generateResultSummary.AutoSize = false;
+        _generateResultSummary.AutoEllipsis = true;
+        _generateResultSummary.Size = new Size(585, 22);
+        createCard.Controls.Add(_generateResultSummary);
+        _startButton = UiTheme.Button("開始處理", true);
+        _startButton.Location = new Point(727, 220);
+        _startButton.Size = new Size(180, 46);
+        _startButton.Font = UiTheme.Font(10.5f, FontStyle.Bold);
+        createCard.Controls.Add(_startButton);
+
+        var inspectCard = new Panel
+        {
+            Width = 930,
+            Height = 330,
+            BackColor = UiTheme.Surface,
+            Margin = new Padding(0),
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        stack.Controls.Add(inspectCard);
+        var inspectStep = StepLabel("2");
+        inspectStep.Location = new Point(22, 17);
+        inspectCard.Controls.Add(inspectStep);
+        var inspectTitle = UiTheme.Label("檢查檔案", 13.5f, UiTheme.Text, FontStyle.Bold);
+        inspectTitle.Location = new Point(62, 18);
+        inspectCard.Controls.Add(inspectTitle);
+        var inspectHelp = UiTheme.Label("一次檢查一個檔案；結果直接顯示在右側，需要時再產出 PDF 報告。", 9f, UiTheme.Muted);
+        inspectHelp.Location = new Point(63, 47);
+        inspectCard.Controls.Add(inspectHelp);
+
+        var inspectDrop = DropPanel();
+        inspectDrop.Location = new Point(22, 82);
+        inspectDrop.Size = new Size(360, 166);
+        inspectDrop.AllowDrop = true;
+        inspectCard.Controls.Add(inspectDrop);
+        var inspectDropTitle = UiTheme.Label("拖放一個檔案", 11f, UiTheme.Text, FontStyle.Bold);
+        inspectDropTitle.Location = new Point(18, 19);
+        inspectDrop.Controls.Add(inspectDropTitle);
+        var inspectDropHelp = UiTheme.Label("或從電腦選擇要檢查的檔案", 8.8f, UiTheme.Muted);
+        inspectDropHelp.Location = new Point(18, 48);
+        inspectDrop.Controls.Add(inspectDropHelp);
+        _inspectSelection = UiTheme.Label("尚未選擇", 9.2f, UiTheme.Accent, FontStyle.Bold);
+        _inspectSelection.Location = new Point(18, 80);
+        _inspectSelection.AutoSize = false;
+        _inspectSelection.AutoEllipsis = true;
+        _inspectSelection.Size = new Size(320, 23);
+        inspectDrop.Controls.Add(_inspectSelection);
+        _pickInspectButton = UiTheme.Button("選擇檔案…");
+        _pickInspectButton.Location = new Point(18, 116);
+        _pickInspectButton.Size = new Size(126, 36);
+        inspectDrop.Controls.Add(_pickInspectButton);
 
         var resultCard = new Panel
         {
-            Dock = DockStyle.Fill,
-            BackColor = UiTheme.Surface,
-            Padding = new Padding(0)
+            Location = new Point(398, 82),
+            Size = new Size(509, 166),
+            BackColor = Color.FromArgb(247, 249, 252)
         };
-        body.Controls.Add(resultCard);
-        resultCard.BringToFront();
-
-        var gridTitleBar = new Panel
+        inspectCard.Controls.Add(resultCard);
+        _inspectBadge = new Label
         {
-            Dock = DockStyle.Top,
-            Height = 48,
-            BackColor = UiTheme.Surface,
-            Padding = new Padding(14, 14, 14, 8)
+            Text = "尚未檢查",
+            AutoSize = false,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Location = new Point(20, 18),
+            Size = new Size(104, 28),
+            Font = UiTheme.Font(8.8f, FontStyle.Bold),
+            ForeColor = UiTheme.Muted,
+            BackColor = Color.FromArgb(235, 238, 242)
         };
-        resultCard.Controls.Add(gridTitleBar);
-        var gridTitle = UiTheme.Label("本次結果", 11f, UiTheme.Text, FontStyle.Bold);
-        gridTitle.Location = new Point(14, 14);
-        gridTitleBar.Controls.Add(gridTitle);
+        resultCard.Controls.Add(_inspectBadge);
+        _inspectHeadline = UiTheme.Label("選擇檔案後開始檢查", 13f, UiTheme.Text, FontStyle.Bold);
+        _inspectHeadline.Location = new Point(20, 62);
+        _inspectHeadline.MaximumSize = new Size(460, 0);
+        resultCard.Controls.Add(_inspectHeadline);
+        _inspectDetail = UiTheme.Label("結果、說明與後續操作會集中顯示在這裡。", 9.3f, UiTheme.Muted);
+        _inspectDetail.Location = new Point(20, 98);
+        _inspectDetail.MaximumSize = new Size(460, 0);
+        resultCard.Controls.Add(_inspectDetail);
 
-        _grid = BuildGrid();
-        resultCard.Controls.Add(_grid);
-        _grid.BringToFront();
+        _inspectButton = UiTheme.Button("開始檢查", true);
+        _inspectButton.Location = new Point(603, 267);
+        _inspectButton.Size = new Size(142, 44);
+        _inspectButton.Font = UiTheme.Font(10f, FontStyle.Bold);
+        inspectCard.Controls.Add(_inspectButton);
+        _reportButton = UiTheme.Button("產出 PDF 報告…");
+        _reportButton.Location = new Point(757, 267);
+        _reportButton.Size = new Size(150, 44);
+        inspectCard.Controls.Add(_reportButton);
 
-        var footer = new Panel
+        stack.ClientSizeChanged += (_, _) =>
         {
-            Dock = DockStyle.Bottom,
-            Height = 62,
-            BackColor = UiTheme.Window,
-            Padding = new Padding(2, 8, 2, 0)
+            var width = Math.Max(840, stack.ClientSize.Width - stack.Padding.Horizontal - 8);
+            createCard.Width = width;
+            inspectCard.Width = width;
+            LayoutCreateCard(createCard, createDrop, outputCard);
+            LayoutInspectCard(inspectCard, inspectDrop, resultCard);
         };
-        body.Controls.Add(footer);
-        footer.BringToFront();
 
-        _statusLabel = UiTheme.Label("請選擇檔案，或直接拖放檔案／資料夾到視窗。", 9.2f, UiTheme.Muted);
-        _statusLabel.AutoEllipsis = true;
-        _statusLabel.Dock = DockStyle.Top;
-        _statusLabel.Height = 26;
-        footer.Controls.Add(_statusLabel);
-
-        _progress = new ProgressBar
-        {
-            Dock = DockStyle.Bottom,
-            Height = 12,
-            Style = ProgressBarStyle.Continuous,
-            Minimum = 0,
-            Maximum = 1,
-            Value = 0
-        };
-        footer.Controls.Add(_progress);
-
-        _pickButton.Click += (_, _) => PickFiles();
+        _pickGenerateButton.Click += (_, _) => PickGenerateFiles();
         _startButton.Click += async (_, _) => await StartOrCancelAsync();
-        _inspectButton.Click += (_, _) => InspectOneFile();
-        _exportButton.Click += (_, _) => ExportPdf();
-        _historyButton.Click += (_, _) => ShowHistory();
+        _pickInspectButton.Click += (_, _) => PickInspectionFile();
+        _inspectButton.Click += async (_, _) => await InspectSelectedAsync();
+        _reportButton.Click += (_, _) => ExportInspectionReport();
         _settingsButton.Click += (_, _) => ShowSettings();
-        DragEnter += OnDragEnter;
-        DragDrop += OnDragDrop;
+        _historyButton.Click += (_, _) => ShowHistory();
+        AttachDrop(createDrop, multiple: true);
+        AttachDrop(inspectDrop, multiple: false);
         FormClosing += OnFormClosing;
 
+        RefreshOutputSummary();
         UpdateActionState();
     }
 
-    private Label AddSummaryCard(TableLayoutPanel parent, int column, string caption, string value)
+    private static Label StepLabel(string text) => new()
     {
-        var card = new Panel
-        {
-            Dock = DockStyle.Fill,
-            Margin = new Padding(column == 0 ? 0 : 6, 0, column == 2 ? 0 : 6, 0),
-            BackColor = UiTheme.Surface,
-            Padding = new Padding(14, 10, 14, 8)
-        };
-        parent.Controls.Add(card, column, 0);
+        Text = text,
+        AutoSize = false,
+        TextAlign = ContentAlignment.MiddleCenter,
+        Size = new Size(30, 30),
+        Font = UiTheme.Font(10f, FontStyle.Bold),
+        ForeColor = Color.White,
+        BackColor = UiTheme.Accent
+    };
 
-        var captionLabel = UiTheme.Label(caption, 8.7f, UiTheme.Muted);
-        captionLabel.Location = new Point(14, 10);
-        card.Controls.Add(captionLabel);
+    private static Panel DropPanel() => new()
+    {
+        BackColor = Color.FromArgb(250, 251, 253),
+        BorderStyle = BorderStyle.FixedSingle,
+        Cursor = Cursors.Hand
+    };
 
-        var valueLabel = UiTheme.Label(value, 19f, UiTheme.Text, FontStyle.Bold);
-        valueLabel.Location = new Point(12, 31);
-        card.Controls.Add(valueLabel);
-        return valueLabel;
+    private void LayoutCreateCard(Panel card, Panel drop, Panel output)
+    {
+        const int margin = 22;
+        const int gap = 14;
+        const int outputWidth = 286;
+        output.Left = card.ClientSize.Width - margin - outputWidth;
+        output.Width = outputWidth;
+        drop.Width = Math.Max(420, output.Left - gap - margin);
+        _pickGenerateButton.Left = Math.Max(300, drop.Width - _pickGenerateButton.Width - 18);
+        _startButton.Left = card.ClientSize.Width - margin - _startButton.Width;
+        _generateStatus.Width = Math.Max(360, _startButton.Left - 36);
+        _progress.Width = drop.Width;
+        _generateResultSummary.Width = drop.Width;
     }
 
-    private static DataGridView BuildGrid()
+    private void LayoutInspectCard(Panel card, Panel drop, Panel result)
     {
-        var grid = new DataGridView
-        {
-            Dock = DockStyle.Fill,
-            BackgroundColor = UiTheme.Surface,
-            BorderStyle = BorderStyle.None,
-            ReadOnly = true,
-            AllowUserToAddRows = false,
-            AllowUserToDeleteRows = false,
-            AllowUserToResizeRows = false,
-            RowHeadersVisible = false,
-            AutoGenerateColumns = false,
-            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-            MultiSelect = false,
-            Font = UiTheme.Font(9.5f),
-            GridColor = Color.FromArgb(234, 236, 240),
-            ColumnHeadersHeight = 38,
-            RowTemplate = { Height = 36 }
-        };
-        grid.EnableHeadersVisualStyles = false;
-        grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(246, 248, 250);
-        grid.ColumnHeadersDefaultCellStyle.ForeColor = UiTheme.Text;
-        grid.ColumnHeadersDefaultCellStyle.Font = UiTheme.Font(9.3f, FontStyle.Bold);
-        grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = Color.FromArgb(246, 248, 250);
-        grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-        grid.DefaultCellStyle.BackColor = UiTheme.Surface;
-        grid.DefaultCellStyle.ForeColor = UiTheme.Text;
-        grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(227, 235, 245);
-        grid.DefaultCellStyle.SelectionForeColor = UiTheme.Text;
-        grid.DefaultCellStyle.Padding = new Padding(4, 0, 4, 0);
-        grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            HeaderText = "檔案",
-            Width = 260,
-            SortMode = DataGridViewColumnSortMode.NotSortable
-        });
-        grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            HeaderText = "狀態",
-            Width = 105,
-            SortMode = DataGridViewColumnSortMode.NotSortable
-        });
-        grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            HeaderText = "說明",
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
-            SortMode = DataGridViewColumnSortMode.NotSortable
-        });
-        return grid;
+        const int margin = 22;
+        const int gap = 16;
+        var leftWidth = Math.Max(330, (int)(card.ClientSize.Width * 0.39));
+        drop.Width = leftWidth;
+        _inspectSelection.Width = Math.Max(240, leftWidth - 36);
+        result.Left = margin + leftWidth + gap;
+        result.Width = Math.Max(390, card.ClientSize.Width - result.Left - margin);
+        _reportButton.Left = card.ClientSize.Width - margin - _reportButton.Width;
+        _inspectButton.Left = _reportButton.Left - 12 - _inspectButton.Width;
     }
 
-    private void PickFiles()
+    private void AttachDrop(Control target, bool multiple)
+    {
+        target.DragEnter += (_, e) =>
+        {
+            if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true)
+                e.Effect = DragDropEffects.Copy;
+        };
+        target.DragDrop += (_, e) =>
+        {
+            if (e.Data?.GetData(DataFormats.FileDrop) is not string[] dropped || dropped.Length == 0)
+                return;
+            var files = ExpandDroppedPaths(dropped).ToArray();
+            if (files.Length == 0) return;
+            if (multiple) SetGenerateFiles(files);
+            else SetInspectionFile(files[0]);
+        };
+    }
+
+    private static IEnumerable<string> ExpandDroppedPaths(IEnumerable<string> paths)
+    {
+        foreach (var path in paths)
+        {
+            if (File.Exists(path))
+            {
+                yield return path;
+                continue;
+            }
+            if (!Directory.Exists(path)) continue;
+            IEnumerable<string> files;
+            try { files = Directory.EnumerateFiles(path, "*.*", SearchOption.TopDirectoryOnly); }
+            catch { continue; }
+            foreach (var file in files) yield return file;
+        }
+    }
+
+    private void PickGenerateFiles()
     {
         if (_workCancellation is not null) return;
         using var dialog = new OpenFileDialog
@@ -252,20 +359,23 @@ internal sealed class MainForm : Form
             Multiselect = true,
             CheckFileExists = true
         };
-        if (dialog.ShowDialog(this) != DialogResult.OK) return;
-        SetSelectedFiles(dialog.FileNames);
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+            SetGenerateFiles(dialog.FileNames);
     }
 
-    private void SetSelectedFiles(IEnumerable<string> paths)
+    private void SetGenerateFiles(IEnumerable<string> paths)
     {
         _selectedFiles.Clear();
         _selectedFiles.AddRange(paths.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase));
-        _results.Clear();
-        _grid.Rows.Clear();
-        UpdateSummary();
-        _statusLabel.Text = _selectedFiles.Count == 0
-            ? "沒有可用的檔案。"
-            : $"已選擇 {_selectedFiles.Count} 個檔案。可按「開始處理」。";
+        _generateSelection.Text = _selectedFiles.Count switch
+        {
+            0 => "尚未選擇檔案",
+            1 => Path.GetFileName(_selectedFiles[0]),
+            _ => $"已選擇 {_selectedFiles.Count} 個檔案"
+        };
+        _generateStatus.Text = _selectedFiles.Count == 0 ? "選擇檔案後即可開始。" : "已準備好，可以開始處理。";
+        _generateResultSummary.Text = "尚無本批結果";
+        _progress.Value = 0;
         UpdateActionState();
     }
 
@@ -275,50 +385,68 @@ internal sealed class MainForm : Form
         {
             _workCancellation.Cancel();
             _startButton.Enabled = false;
-            _statusLabel.Text = "正在停止…";
+            _generateStatus.Text = "正在停止…";
             return;
         }
         if (_selectedFiles.Count == 0) return;
 
+        if (_preferences.OutputMode == "每批詢問")
+        {
+            using var folder = new FolderBrowserDialog
+            {
+                Description = "選擇這一批的輸出資料夾",
+                UseDescriptionForTitle = true,
+                ShowNewFolderButton = true
+            };
+            if (folder.ShowDialog(this) != DialogResult.OK)
+            {
+                _generateStatus.Text = "已取消，尚未開始處理。";
+                return;
+            }
+        }
+
         _workCancellation = new CancellationTokenSource();
         var token = _workCancellation.Token;
-        _results.Clear();
-        _grid.Rows.Clear();
         _progress.Minimum = 0;
         _progress.Maximum = Math.Max(1, _selectedFiles.Count);
         _progress.Value = 0;
-        _statusLabel.Text = "正在處理…";
-        UpdateSummary();
+        _generateStatus.Text = "正在處理…";
+        _generateResultSummary.Text = "本批進行中";
         UpdateActionState();
 
+        var batchResults = new List<ResultRow>();
         try
         {
             for (var index = 0; index < _selectedFiles.Count; index++)
             {
                 token.ThrowIfCancellationRequested();
-                await Task.Delay(420, token);
-
+                await Task.Delay(480, token);
                 var fileName = Path.GetFileName(_selectedFiles[index]);
-                var simulatedFailure = fileName.Contains("fail", StringComparison.OrdinalIgnoreCase);
-                var row = simulatedFailure
-                    ? new ResultRow(fileName, "失敗", "這是用於測試錯誤呈現的模擬結果。")
+                var failed = fileName.Contains("fail", StringComparison.OrdinalIgnoreCase);
+                var row = failed
+                    ? new ResultRow(fileName, "失敗", "模擬失敗，用於確認錯誤狀態的呈現方式。")
                     : new ResultRow(fileName, "完成", "模擬處理完成。");
-                _results.Add(row);
-                _grid.Rows.Add(row.FileName, row.Status, row.Detail);
+                batchResults.Add(row);
+                _history.Add(row);
                 _progress.Value = index + 1;
-                _statusLabel.Text = $"正在處理… {index + 1} / {_selectedFiles.Count}";
-                UpdateSummary();
+                _generateStatus.Text = $"正在處理… {index + 1} / {_selectedFiles.Count}";
+                var success = batchResults.Count(x => x.Status == "完成");
+                var failure = batchResults.Count - success;
+                _generateResultSummary.Text = failure == 0
+                    ? $"已完成 {success} 個檔案"
+                    : $"完成 {success}，失敗 {failure}";
             }
 
-            _statusLabel.Text = $"處理完成，共 {_results.Count} 筆結果。";
+            _generateStatus.Text = "本批處理完成。";
             if (_preferences.NotifyOnComplete)
-            {
                 Text = "Desktop Workflow Preview — 完成";
-            }
         }
         catch (OperationCanceledException)
         {
-            _statusLabel.Text = "已取消。已完成的模擬結果仍保留在清單中。";
+            _generateStatus.Text = "已取消；已完成的項目仍保留。";
+            var success = batchResults.Count(x => x.Status == "完成");
+            var failure = batchResults.Count - success;
+            _generateResultSummary.Text = $"取消前完成 {success}，失敗 {failure}";
         }
         finally
         {
@@ -333,80 +461,86 @@ internal sealed class MainForm : Form
         }
     }
 
-    private void InspectOneFile()
+    private void PickInspectionFile()
     {
+        if (_workCancellation is not null) return;
         using var dialog = new OpenFileDialog
         {
-            Title = "檢查檔案",
+            Title = "選擇要檢查的檔案",
             Filter = "所有檔案 (*.*)|*.*",
             Multiselect = false,
             CheckFileExists = true
         };
-        if (dialog.ShowDialog(this) != DialogResult.OK) return;
-
-        using var result = new Form
-        {
-            Text = "檢查結果",
-            StartPosition = FormStartPosition.CenterParent,
-            ClientSize = new Size(520, 300),
-            FormBorderStyle = FormBorderStyle.FixedDialog,
-            MaximizeBox = false,
-            MinimizeBox = false,
-            ShowInTaskbar = false,
-            BackColor = UiTheme.Window,
-            Font = UiTheme.Font()
-        };
-
-        var card = new Panel
-        {
-            Left = 18,
-            Top = 18,
-            Width = 484,
-            Height = 210,
-            BackColor = UiTheme.Surface,
-            Padding = new Padding(20)
-        };
-        result.Controls.Add(card);
-        var heading = UiTheme.Label("檢查完成", 14f, UiTheme.Text, FontStyle.Bold);
-        heading.Location = new Point(20, 18);
-        card.Controls.Add(heading);
-        var name = UiTheme.Label(Path.GetFileName(dialog.FileName), 10f, UiTheme.Text);
-        name.Location = new Point(20, 59);
-        name.MaximumSize = new Size(440, 0);
-        card.Controls.Add(name);
-        var status = UiTheme.Label("模擬狀態：正常", 11f, UiTheme.Success, FontStyle.Bold);
-        status.Location = new Point(20, 99);
-        card.Controls.Add(status);
-        var note = UiTheme.Label("此結果只用於測試資訊層級、文字長度與操作流程。", 9.2f, UiTheme.Muted);
-        note.Location = new Point(20, 142);
-        note.MaximumSize = new Size(440, 0);
-        card.Controls.Add(note);
-        var close = UiTheme.Button("關閉", true);
-        close.Left = 394;
-        close.Top = 246;
-        close.Click += (_, _) => result.Close();
-        result.Controls.Add(close);
-        result.AcceptButton = close;
-        result.ShowDialog(this);
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+            SetInspectionFile(dialog.FileName);
     }
 
-    private void ExportPdf()
+    private void SetInspectionFile(string path)
     {
+        if (!File.Exists(path)) return;
+        _inspectionFile = path;
+        _inspectionResult = null;
+        _inspectSelection.Text = Path.GetFileName(path);
+        SetInspectionIdle("已選擇檔案", "按「開始檢查」取得結果。", UiTheme.Accent);
+        UpdateActionState();
+    }
+
+    private async Task InspectSelectedAsync()
+    {
+        if (_inspectionFile is null || _workCancellation is not null) return;
+        _inspectButton.Enabled = false;
+        _pickInspectButton.Enabled = false;
+        _reportButton.Enabled = false;
+        _inspectBadge.Text = "檢查中";
+        _inspectBadge.ForeColor = UiTheme.Accent;
+        _inspectBadge.BackColor = Color.FromArgb(232, 239, 248);
+        _inspectHeadline.Text = "正在檢查檔案…";
+        _inspectDetail.Text = "請稍候，完成後結果會顯示在這裡。";
+
+        await Task.Delay(650);
+
+        var fileName = Path.GetFileName(_inspectionFile);
+        var flagged = fileName.Contains("fail", StringComparison.OrdinalIgnoreCase);
+        _inspectionResult = flagged
+            ? new ResultRow(fileName, "需注意", "這是模擬結果，用於確認警示資訊的視覺層級。")
+            : new ResultRow(fileName, "完成", "這是模擬結果，用於確認結果與報告操作流程。");
+        _history.Add(_inspectionResult);
+
+        if (flagged)
+        {
+            _inspectBadge.Text = "需注意";
+            _inspectBadge.ForeColor = UiTheme.Danger;
+            _inspectBadge.BackColor = Color.FromArgb(252, 238, 238);
+            _inspectHeadline.Text = "檢查完成，結果需要注意";
+        }
+        else
+        {
+            _inspectBadge.Text = "完成";
+            _inspectBadge.ForeColor = UiTheme.Success;
+            _inspectBadge.BackColor = Color.FromArgb(233, 247, 240);
+            _inspectHeadline.Text = "檢查完成";
+        }
+        _inspectDetail.Text = _inspectionResult.Detail;
+        UpdateActionState();
+    }
+
+    private void ExportInspectionReport()
+    {
+        if (_inspectionResult is null || _inspectionFile is null) return;
         using var dialog = new SaveFileDialog
         {
-            Title = "匯出 PDF",
+            Title = "儲存 PDF 報告",
             Filter = "PDF 文件 (*.pdf)|*.pdf",
             DefaultExt = "pdf",
             AddExtension = true,
-            FileName = "DesktopHarness_Report.pdf",
+            FileName = Path.GetFileNameWithoutExtension(_inspectionFile) + "_report.pdf",
             OverwritePrompt = true
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
-
         try
         {
-            PdfExporter.Write(dialog.FileName, _results);
-            MessageBox.Show(this, $"PDF 已儲存：\n{dialog.FileName}", "匯出完成",
+            PdfExporter.Write(dialog.FileName, new[] { _inspectionResult });
+            MessageBox.Show(this, "PDF 報告已儲存。", "完成",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
@@ -416,77 +550,52 @@ internal sealed class MainForm : Form
         }
     }
 
-    private void ShowHistory()
-    {
-        using var dialog = new HistoryForm(_results);
-        dialog.ShowDialog(this);
-    }
-
     private void ShowSettings()
     {
+        if (_workCancellation is not null) return;
         using var dialog = new SettingsForm(_preferences);
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         _preferences = dialog.Preferences;
-        _statusLabel.Text = "設定已儲存，下一次操作生效。";
+        RefreshOutputSummary();
     }
 
-    private void UpdateSummary()
+    private void ShowHistory()
     {
-        var done = _results.Count(r => r.Status == "完成");
-        var failed = _results.Count(r => r.Status == "失敗");
-        var pending = Math.Max(0, _selectedFiles.Count - _results.Count);
-        _pendingValue.Text = pending.ToString();
-        _doneValue.Text = done.ToString();
-        _failedValue.Text = failed.ToString();
-        _doneValue.ForeColor = done > 0 ? UiTheme.Success : UiTheme.Text;
-        _failedValue.ForeColor = failed > 0 ? UiTheme.Danger : UiTheme.Text;
+        if (_workCancellation is not null) return;
+        using var dialog = new HistoryForm(_history);
+        dialog.ShowDialog(this);
+    }
+
+    private void RefreshOutputSummary()
+    {
+        _outputSummary.Text = _preferences.OutputMode switch
+        {
+            "固定資料夾" => $"固定資料夾 · {_preferences.OutputFormat}",
+            "每批詢問" => $"每批詢問 · {_preferences.OutputFormat}",
+            _ => $"來源旁邊 · {_preferences.OutputFormat}"
+        };
+    }
+
+    private void SetInspectionIdle(string headline, string detail, Color color)
+    {
+        _inspectBadge.Text = "待檢查";
+        _inspectBadge.ForeColor = color;
+        _inspectBadge.BackColor = Color.FromArgb(235, 240, 247);
+        _inspectHeadline.Text = headline;
+        _inspectDetail.Text = detail;
     }
 
     private void UpdateActionState()
     {
-        var working = _workCancellation is not null;
-        _pickButton.Enabled = !working;
-        _inspectButton.Enabled = !working;
-        _exportButton.Enabled = !working;
-        _historyButton.Enabled = !working;
-        _settingsButton.Enabled = !working;
-        _startButton.Enabled = working || _selectedFiles.Count > 0;
-        _startButton.Text = working ? "取消" : "開始處理";
-    }
-
-    private void OnDragEnter(object? sender, DragEventArgs e)
-    {
-        e.Effect = _workCancellation is null && e.Data?.GetDataPresent(DataFormats.FileDrop) == true
-            ? DragDropEffects.Copy
-            : DragDropEffects.None;
-    }
-
-    private void OnDragDrop(object? sender, DragEventArgs e)
-    {
-        if (_workCancellation is not null) return;
-        if (e.Data?.GetData(DataFormats.FileDrop) is not string[] dropped) return;
-
-        var files = new List<string>();
-        foreach (var path in dropped)
-        {
-            if (File.Exists(path))
-            {
-                files.Add(path);
-                continue;
-            }
-            if (Directory.Exists(path))
-            {
-                try
-                {
-                    files.AddRange(Directory.EnumerateFiles(path, "*", SearchOption.TopDirectoryOnly));
-                }
-                catch
-                {
-                    // A folder that cannot be enumerated is simply ignored in this UI harness.
-                }
-            }
-        }
-        SetSelectedFiles(files);
+        var busy = _workCancellation is not null;
+        _startButton.Text = busy ? "取消" : "開始處理";
+        _startButton.Enabled = busy || _selectedFiles.Count > 0;
+        _pickGenerateButton.Enabled = !busy;
+        _settingsButton.Enabled = !busy;
+        _historyButton.Enabled = !busy;
+        _pickInspectButton.Enabled = !busy;
+        _inspectButton.Enabled = !busy && _inspectionFile is not null;
+        _reportButton.Enabled = !busy && _inspectionResult is not null;
     }
 
     private void OnFormClosing(object? sender, FormClosingEventArgs e)
@@ -496,6 +605,6 @@ internal sealed class MainForm : Form
         _closeAfterWork = true;
         _workCancellation.Cancel();
         _startButton.Enabled = false;
-        _statusLabel.Text = "正在停止… 完成收尾後會關閉視窗。";
+        _generateStatus.Text = "正在停止…";
     }
 }
