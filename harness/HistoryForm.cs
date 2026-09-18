@@ -8,108 +8,114 @@ internal sealed class HistoryForm : Form
     {
         Text = "紀錄";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(720, 520);
-        MinimumSize = new Size(620, 420);
+        ClientSize = new Size(780, 500);
+        MinimumSize = new Size(680, 430);
         BackColor = UiTheme.Window;
         Font = UiTheme.Font();
         ShowInTaskbar = false;
 
-        var title = UiTheme.Label("近期紀錄", 15f, UiTheme.Text, FontStyle.Bold);
-        title.Location = new Point(24, 20);
+        var title = UiTheme.Label("紀錄", 15f, UiTheme.Text, FontStyle.Bold);
+        title.Location = new Point(22, 18);
         Controls.Add(title);
 
-        var sub = UiTheme.Label(rows.Count == 0
-            ? "目前沒有紀錄。"
-            : $"目前顯示 {rows.Count} 筆測試紀錄。", 9.2f, UiTheme.Muted);
-        sub.Location = new Point(25, 52);
+        var sub = UiTheme.Label("依類型分開瀏覽；正式版本會顯示長期保存的建立與驗證紀錄。", 9.1f, UiTheme.Muted);
+        sub.Location = new Point(23, 49);
         Controls.Add(sub);
 
-        var list = new FlowLayoutPanel
+        var tabs = new TabControl
         {
-            Left = 22,
-            Top = 84,
-            Width = 676,
-            Height = 374,
+            Left = 20,
+            Top = 78,
+            Width = 740,
+            Height = 356,
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
-            AutoScroll = true,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            BackColor = UiTheme.Window,
-            Padding = new Padding(0, 0, 8, 0)
+            Font = UiTheme.Font(9.6f)
         };
-        Controls.Add(list);
+        Controls.Add(tabs);
 
-        if (rows.Count == 0)
-        {
-            var empty = new Panel
-            {
-                Width = 650,
-                Height = 110,
-                BackColor = UiTheme.Surface,
-                Margin = new Padding(0, 0, 0, 10)
-            };
-            var emptyTitle = UiTheme.Label("尚無紀錄", 11f, UiTheme.Text, FontStyle.Bold);
-            emptyTitle.Location = new Point(18, 22);
-            empty.Controls.Add(emptyTitle);
-            var emptyText = UiTheme.Label("完成一次工作後，這裡會顯示最近的項目。", 9.2f, UiTheme.Muted);
-            emptyText.Location = new Point(18, 54);
-            empty.Controls.Add(emptyText);
-            list.Controls.Add(empty);
-        }
-        else
-        {
-            foreach (var row in rows.Reverse())
-                list.Controls.Add(BuildRecordCard(row));
-        }
+        var createdRows = rows.Where(x => x.Category == "建立").Reverse().ToList();
+        var verifiedRows = rows.Where(x => x.Category == "驗證").Reverse().ToList();
+
+        tabs.TabPages.Add(BuildPage($"建立紀錄  {createdRows.Count}", createdRows, "尚無建立紀錄"));
+        tabs.TabPages.Add(BuildPage($"驗證紀錄  {verifiedRows.Count}", verifiedRows, "尚無驗證紀錄"));
 
         var close = UiTheme.Button("關閉", true);
         close.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-        close.Left = ClientSize.Width - 132;
-        close.Top = ClientSize.Height - 48;
-        close.Width = 110;
+        close.Left = ClientSize.Width - 130;
+        close.Top = ClientSize.Height - 50;
+        close.Width = 108;
         close.Click += (_, _) => Close();
         Controls.Add(close);
     }
 
-    private static Control BuildRecordCard(ResultRow row)
+    private static TabPage BuildPage(string title, IReadOnlyList<ResultRow> rows, string emptyText)
     {
-        var card = new Panel
+        var page = new TabPage(title)
         {
-            Width = 650,
-            Height = 94,
             BackColor = UiTheme.Surface,
-            Margin = new Padding(0, 0, 0, 10),
-            Padding = new Padding(18, 14, 18, 12)
+            Padding = new Padding(0)
         };
 
-        var file = UiTheme.Label(row.FileName, 10.4f, UiTheme.Text, FontStyle.Bold);
-        file.Location = new Point(18, 15);
-        file.MaximumSize = new Size(455, 24);
-        file.AutoEllipsis = true;
-        file.AutoSize = false;
-        file.Size = new Size(455, 24);
-        card.Controls.Add(file);
-
-        var status = new Label
+        if (rows.Count == 0)
         {
-            Text = row.Status,
-            AutoSize = false,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Font = UiTheme.Font(8.8f, FontStyle.Bold),
-            ForeColor = row.Status == "失敗" ? UiTheme.Danger : UiTheme.Success,
-            BackColor = row.Status == "失敗"
-                ? Color.FromArgb(252, 238, 238)
-                : Color.FromArgb(233, 247, 240),
-            Location = new Point(525, 14),
-            Size = new Size(92, 26)
+            var empty = UiTheme.Label(emptyText, 10f, UiTheme.Muted);
+            empty.Location = new Point(22, 24);
+            page.Controls.Add(empty);
+            return page;
+        }
+
+        var grid = new DataGridView
+        {
+            Dock = DockStyle.Fill,
+            BackgroundColor = UiTheme.Surface,
+            BorderStyle = BorderStyle.None,
+            ReadOnly = true,
+            AllowUserToAddRows = false,
+            AllowUserToDeleteRows = false,
+            AllowUserToResizeRows = false,
+            RowHeadersVisible = false,
+            AutoGenerateColumns = false,
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            MultiSelect = false,
+            Font = UiTheme.Font(9.3f),
+            GridColor = Color.FromArgb(232, 235, 240),
+            ColumnHeadersHeight = 38,
+            RowTemplate = { Height = 36 }
         };
-        card.Controls.Add(status);
+        grid.EnableHeadersVisualStyles = false;
+        grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(246, 248, 250);
+        grid.ColumnHeadersDefaultCellStyle.ForeColor = UiTheme.Text;
+        grid.ColumnHeadersDefaultCellStyle.Font = UiTheme.Font(9.2f, FontStyle.Bold);
+        grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = Color.FromArgb(246, 248, 250);
+        grid.DefaultCellStyle.BackColor = UiTheme.Surface;
+        grid.DefaultCellStyle.ForeColor = UiTheme.Text;
+        grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(227, 235, 245);
+        grid.DefaultCellStyle.SelectionForeColor = UiTheme.Text;
+        grid.DefaultCellStyle.Padding = new Padding(5, 0, 5, 0);
 
-        var detail = UiTheme.Label(row.Detail, 9.1f, UiTheme.Muted);
-        detail.Location = new Point(18, 51);
-        detail.MaximumSize = new Size(598, 0);
-        card.Controls.Add(detail);
+        grid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            HeaderText = "檔案",
+            Width = 260,
+            SortMode = DataGridViewColumnSortMode.NotSortable
+        });
+        grid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            HeaderText = "結果",
+            Width = 118,
+            SortMode = DataGridViewColumnSortMode.NotSortable
+        });
+        grid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            HeaderText = "摘要",
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+            SortMode = DataGridViewColumnSortMode.NotSortable
+        });
 
-        return card;
+        foreach (var row in rows)
+            grid.Rows.Add(row.FileName, row.Status, row.Detail);
+
+        page.Controls.Add(grid);
+        return page;
     }
 }
