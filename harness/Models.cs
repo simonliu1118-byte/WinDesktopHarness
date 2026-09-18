@@ -1,6 +1,10 @@
 namespace WinDesktopHarness;
 
-internal sealed record ResultRow(string FileName, string Status, string Detail);
+internal sealed record ResultRow(
+    string FileName,
+    string Status,
+    string Detail,
+    string Category = "建立");
 
 internal sealed class AppPreferences
 {
