@@ -4,7 +4,10 @@ internal sealed record ResultRow(string FileName, string Status, string Detail);
 
 internal sealed class AppPreferences
 {
-    public string Density { get; set; } = "標準";
+    // Synthetic UI choices only. These names intentionally describe generic
+    // file-output behavior and are not a production data contract.
+    public string OutputMode { get; set; } = "來源旁邊";
+    public string FixedFolder { get; set; } = string.Empty;
+    public string OutputFormat { get; set; } = "PNG";
     public bool NotifyOnComplete { get; set; } = true;
-    public bool OpenFolderAfterExport { get; set; } = false;
 }
