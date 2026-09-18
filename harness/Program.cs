@@ -6,6 +6,8 @@ internal static class Program
     private static void Main()
     {
         ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm());
+        var form = new MainForm();
+        UiTheme.EnlargeTabs(form);
+        Application.Run(form);
     }
 }
