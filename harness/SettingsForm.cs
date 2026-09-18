@@ -24,7 +24,7 @@ internal sealed class SettingsForm : Form
 
         Text = "設定";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(430, 386);
+        ClientSize = new Size(430, 408);
         MinimumSize = ClientSize;
         MaximumSize = ClientSize;
         BackColor = UiTheme.Window;
@@ -109,7 +109,7 @@ internal sealed class SettingsForm : Form
             Left = 20,
             Top = 306,
             Width = 390,
-            Height = 54,
+            Height = 52,
             BackColor = UiTheme.Surface
         };
         Controls.Add(generalCard);
@@ -117,7 +117,7 @@ internal sealed class SettingsForm : Form
         _notify.Text = "工作完成時顯示完成提示";
         _notify.Checked = Preferences.NotifyOnComplete;
         _notify.AutoSize = true;
-        _notify.Location = new Point(18, 17);
+        _notify.Location = new Point(18, 16);
         _notify.Font = UiTheme.Font(9.4f);
         generalCard.Controls.Add(_notify);
 
