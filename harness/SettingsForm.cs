@@ -37,23 +37,6 @@ internal sealed class SettingsForm : Form
         title.Location = new Point(labelX, 20);
         Controls.Add(title);
 
-        var close = new Button
-        {
-            Text = "×",
-            FlatStyle = FlatStyle.Flat,
-            BackColor = UiTheme.Surface,
-            ForeColor = UiTheme.Muted,
-            Font = UiTheme.Font(14f),
-            Location = new Point(386, 12),
-            Size = new Size(32, 32),
-            TabStop = false,
-            Cursor = Cursors.Hand
-        };
-        close.FlatAppearance.BorderSize = 0;
-        close.FlatAppearance.MouseOverBackColor = Color.FromArgb(245, 247, 250);
-        close.Click += (_, _) => DialogResult = DialogResult.Cancel;
-        Controls.Add(close);
-
         var subtitle = UiTheme.Label("調整檔案輸出方式與一般操作偏好。", 9.1f, UiTheme.Muted);
         subtitle.Location = new Point(labelX, 52);
         Controls.Add(subtitle);
