@@ -16,6 +16,7 @@ internal static class Program
         var form = new MainForm();
         UiTheme.EnlargeTabs(form);
         RenameMainTab(form);
+        InspectionResultVisuals.Attach(form);
         if (AcceptanceMode.IsEnabled)
             AcceptanceMode.Apply(form);
         Application.Run(form);
@@ -30,6 +31,7 @@ internal static class Program
         };
         UiTheme.EnlargeTabs(form);
         RenameMainTab(form);
+        InspectionResultVisuals.Attach(form);
         AcceptanceMode.Apply(form, 120);
         form.Show();
         Application.DoEvents();
