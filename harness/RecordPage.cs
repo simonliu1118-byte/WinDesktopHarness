@@ -18,6 +18,9 @@ internal sealed class RecordPage : UserControl
     private readonly Label _keywordLabel;
     private readonly Label _rangeLabel;
     private readonly Label _statusLabel;
+    private bool _updatingList;
+    private bool _placeholderRefreshQueued;
+    private bool _disposed;
 
     public RecordPage(string category)
     {
@@ -72,11 +75,19 @@ internal sealed class RecordPage : UserControl
         ConfigureList();
         Controls.Add(_list);
 
-        Resize += (_, _) => LayoutPage();
+        Resize += (_, _) =>
+        {
+            LayoutPage();
+            QueuePlaceholderRefresh();
+        };
+        VisibleChanged += (_, _) =>
+        {
+            if (Visible) QueuePlaceholderRefresh();
+        };
         _list.SizeChanged += (_, _) =>
         {
             LayoutColumns();
-            FillPlaceholderRows();
+            QueuePlaceholderRefresh();
         };
         _keyword.KeyDown += (_, e) =>
         {
@@ -87,7 +98,7 @@ internal sealed class RecordPage : UserControl
         _list.MouseDown += (_, e) =>
         {
             var hit = _list.HitTest(e.Location);
-            if (hit.Item?.Tag == PlaceholderRow)
+            if (ReferenceEquals(hit.Item?.Tag, PlaceholderRow))
                 _list.SelectedItems.Clear();
         };
         _list.DoubleClick += (_, _) =>
@@ -158,12 +169,12 @@ internal sealed class RecordPage : UserControl
         _list.DrawSubItem += (_, e) => DrawSubItem(e);
     }
 
-    private static void DrawHeader(DrawListViewColumnHeaderEventArgs e)
+    private void DrawHeader(DrawListViewColumnHeaderEventArgs e)
     {
         using var background = new SolidBrush(Color.FromArgb(246, 246, 246));
         e.Graphics.FillRectangle(background, e.Bounds);
         var textBounds = Rectangle.Inflate(e.Bounds, -6, 0);
-        TextRenderer.DrawText(e.Graphics, e.Header?.Text ?? string.Empty, UiTheme.Font(9.3f), textBounds,
+        TextRenderer.DrawText(e.Graphics, e.Header?.Text ?? string.Empty, _list.Font, textBounds,
             UiTheme.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
             TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         using var pen = new Pen(Color.FromArgb(190, 190, 190));
@@ -173,7 +184,8 @@ internal sealed class RecordPage : UserControl
 
     private void DrawSubItem(DrawListViewSubItemEventArgs e)
     {
-        var selected = e.Item.Selected && e.Item.Tag != PlaceholderRow;
+        var placeholder = ReferenceEquals(e.Item.Tag, PlaceholderRow);
+        var selected = e.Item.Selected && !placeholder;
         var background = selected
             ? Color.FromArgb(224, 233, 244)
             : e.Item.Index % 2 == 0 ? Color.White : Color.FromArgb(239, 244, 249);
@@ -181,7 +193,7 @@ internal sealed class RecordPage : UserControl
         using (var brush = new SolidBrush(background))
             e.Graphics.FillRectangle(brush, e.Bounds);
 
-        if (e.Item.Tag != PlaceholderRow)
+        if (!placeholder)
         {
             var textBounds = Rectangle.Inflate(e.Bounds, -6, 0);
             TextRenderer.DrawText(e.Graphics, e.SubItem?.Text ?? string.Empty, _list.Font, textBounds,
@@ -196,6 +208,8 @@ internal sealed class RecordPage : UserControl
 
     private void LayoutPage()
     {
+        if (_disposed) return;
+
         const int left = 16;
         const int top = 16;
         const int labelGap = 8;
@@ -224,12 +238,11 @@ internal sealed class RecordPage : UserControl
         _list.Height = Math.Max(300, ClientSize.Height - _list.Top - 14);
 
         LayoutColumns();
-        FillPlaceholderRows();
     }
 
     private void LayoutColumns()
     {
-        if (_list.Columns.Count != 5) return;
+        if (_disposed || _list.Columns.Count != 5) return;
         _list.Columns[0].Width = 145;
         _list.Columns[1].Width = 125;
         _list.Columns[2].Width = Math.Max(210, (int)(_list.ClientSize.Width * 0.28));
@@ -272,66 +285,90 @@ internal sealed class RecordPage : UserControl
 
     private void RefreshList()
     {
-        _list.BeginUpdate();
+        if (_disposed || _updatingList) return;
+        _updatingList = true;
         try
         {
-            _list.Items.Clear();
-            foreach (var row in _visible)
+            _list.BeginUpdate();
+            try
             {
-                var item = new ListViewItem((row.CreatedAt ?? DateTime.Now).ToString("yyyy/MM/dd HH:mm"))
+                _list.Items.Clear();
+                foreach (var row in _visible)
                 {
-                    Tag = row
-                };
-                item.SubItems.Add(row.Reference);
-                item.SubItems.Add(row.FileName);
-                item.SubItems.Add(row.Status);
-                item.SubItems.Add(row.Detail);
-                _list.Items.Add(item);
+                    var item = new ListViewItem((row.CreatedAt ?? DateTime.Now).ToString("yyyy/MM/dd HH:mm"))
+                    {
+                        Tag = row
+                    };
+                    item.SubItems.Add(row.Reference);
+                    item.SubItems.Add(row.FileName);
+                    item.SubItems.Add(row.Status);
+                    item.SubItems.Add(row.Detail);
+                    _list.Items.Add(item);
+                }
             }
-            FillPlaceholderRowsCore();
+            finally
+            {
+                _list.EndUpdate();
+            }
         }
         finally
         {
-            _list.EndUpdate();
+            _updatingList = false;
         }
+
+        QueuePlaceholderRefresh();
         _list.Invalidate(true);
     }
 
-    private void FillPlaceholderRows()
+    private void QueuePlaceholderRefresh()
     {
-        if (_list.Items.Count < _visible.Count)
+        if (_disposed || _placeholderRefreshQueued || !Visible || !IsHandleCreated) return;
+        _placeholderRefreshQueued = true;
+        BeginInvoke((Action)(() =>
         {
-            RefreshList();
-            return;
-        }
+            _placeholderRefreshQueued = false;
+            if (_disposed || !Visible || _updatingList) return;
+            FillPlaceholderRowsSafe();
+        }));
+    }
 
-        _list.BeginUpdate();
+    private void FillPlaceholderRowsSafe()
+    {
+        if (_disposed || _updatingList || _list.ClientSize.Height <= 0) return;
+        _updatingList = true;
         try
         {
-            while (_list.Items.Count > _visible.Count)
-                _list.Items.RemoveAt(_list.Items.Count - 1);
-            FillPlaceholderRowsCore();
+            _list.BeginUpdate();
+            try
+            {
+                while (_list.Items.Count > _visible.Count)
+                    _list.Items.RemoveAt(_list.Items.Count - 1);
+
+                // Leave a small safety margin so adding placeholder rows cannot make the
+                // native control toggle its scrollbar and recursively relayout the tab page.
+                var capacity = Math.Max(1, (_list.ClientSize.Height - 32) / 23);
+                var placeholders = Math.Max(0, capacity - _visible.Count);
+                for (var i = 0; i < placeholders; i++)
+                {
+                    var blank = new ListViewItem(string.Empty) { Tag = PlaceholderRow };
+                    blank.SubItems.Add(string.Empty);
+                    blank.SubItems.Add(string.Empty);
+                    blank.SubItems.Add(string.Empty);
+                    blank.SubItems.Add(string.Empty);
+                    _list.Items.Add(blank);
+                }
+            }
+            finally
+            {
+                _list.EndUpdate();
+            }
         }
         finally
         {
-            _list.EndUpdate();
+            _updatingList = false;
         }
-        _list.Invalidate(true);
-    }
 
-    private void FillPlaceholderRowsCore()
-    {
-        var capacity = Math.Max(1, (_list.ClientSize.Height - 26) / 23);
-        var placeholders = Math.Max(0, capacity - _visible.Count);
-        for (var i = 0; i < placeholders; i++)
-        {
-            var blank = new ListViewItem(string.Empty) { Tag = PlaceholderRow };
-            blank.SubItems.Add(string.Empty);
-            blank.SubItems.Add(string.Empty);
-            blank.SubItems.Add(string.Empty);
-            blank.SubItems.Add(string.Empty);
-            _list.Items.Add(blank);
-        }
+        _list.Invalidate(true);
     }
 
     private void ShowDetails(ResultRow row)
@@ -345,6 +382,7 @@ internal sealed class RecordPage : UserControl
 
     protected override void Dispose(bool disposing)
     {
+        _disposed = true;
         if (disposing) _rowHeightImages.Dispose();
         base.Dispose(disposing);
     }
