@@ -23,7 +23,7 @@ internal sealed class RecordPage : UserControl
     private readonly Label _keywordLabel;
     private readonly Label _rangeLabel;
     private readonly Label _statusLabel;
-    private string? _activeTooltipText;
+    private string? _activeTooltipKey;
     private bool _placeholderRefreshQueued;
     private bool _updatingPlaceholders;
     private bool _disposed;
@@ -114,7 +114,11 @@ internal sealed class RecordPage : UserControl
                 ShowDetails(row);
         };
         _list.MouseMove += (_, e) => UpdateFileTooltip(e.Location);
-        _list.MouseLeave += (_, _) => SetFileTooltip(null);
+        _list.MouseLeave += (_, _) => HideFileTooltip();
+
+        _fileToolTip.ShowAlways = true;
+        _fileToolTip.UseAnimation = false;
+        _fileToolTip.UseFading = false;
 
         LayoutPage();
     }
@@ -166,7 +170,7 @@ internal sealed class RecordPage : UserControl
         _list.Columns.Add("時間", 145, HorizontalAlignment.Left);
         _list.Columns.Add("參考編號", 125, HorizontalAlignment.Left);
         _list.Columns.Add("檔案", 260, HorizontalAlignment.Left);
-        _list.Columns.Add(_category == "建立" ? "狀態" : "結果", _category == "建立" ? 86 : 112, HorizontalAlignment.Left);
+        _list.Columns.Add(_category == "建立" ? "狀態" : "結果", _category == "建立" ? 78 : 96, HorizontalAlignment.Left);
         _list.Columns.Add("說明", 340, HorizontalAlignment.Left);
 
         _list.DrawColumnHeader += (_, e) => DrawHeader(e);
@@ -255,7 +259,7 @@ internal sealed class RecordPage : UserControl
         const int timeWidth = 145;
         const int referenceWidth = 125;
         const int fileWidth = 260;
-        var resultWidth = _category == "建立" ? 86 : 112;
+        var resultWidth = _category == "建立" ? 78 : 96;
         var clientWidth = Math.Max(760, _list.ClientSize.Width - 5);
         var used = timeWidth + referenceWidth + fileWidth + resultWidth;
         var detailWidth = Math.Max(260, clientWidth - used);
@@ -392,29 +396,39 @@ internal sealed class RecordPage : UserControl
         var hit = _list.HitTest(location);
         if (hit.Item?.Tag is not ResultRow row || hit.SubItem is null)
         {
-            SetFileTooltip(null);
+            HideFileTooltip();
             return;
         }
 
         var subItemIndex = hit.Item.SubItems.IndexOf(hit.SubItem);
         if (subItemIndex != 2)
         {
-            SetFileTooltip(null);
+            HideFileTooltip();
             return;
         }
 
         var availableWidth = Math.Max(1, _list.Columns[2].Width - 14);
         var measuredWidth = TextRenderer.MeasureText(row.FileName, _list.Font,
             new Size(int.MaxValue, 23), TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
+        if (measuredWidth <= availableWidth)
+        {
+            HideFileTooltip();
+            return;
+        }
 
-        SetFileTooltip(measuredWidth > availableWidth ? row.FileName : null);
+        var key = $"{hit.Item.Index}:{row.FileName}";
+        if (string.Equals(_activeTooltipKey, key, StringComparison.Ordinal)) return;
+
+        _fileToolTip.Hide(_list);
+        _activeTooltipKey = key;
+        _fileToolTip.Show(row.FileName, _list, location.X + 14, location.Y + 18, 5000);
     }
 
-    private void SetFileTooltip(string? text)
+    private void HideFileTooltip()
     {
-        if (string.Equals(_activeTooltipText, text, StringComparison.Ordinal)) return;
-        _activeTooltipText = text;
-        _fileToolTip.SetToolTip(_list, text ?? string.Empty);
+        if (_activeTooltipKey is null) return;
+        _activeTooltipKey = null;
+        _fileToolTip.Hide(_list);
     }
 
     private void ShowDetails(ResultRow row)
