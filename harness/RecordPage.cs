@@ -165,9 +165,9 @@ internal sealed class RecordPage : UserControl
 
         _list.Columns.Add("時間", 145, HorizontalAlignment.Left);
         _list.Columns.Add("參考編號", 125, HorizontalAlignment.Left);
-        _list.Columns.Add("檔案", 280, HorizontalAlignment.Left);
+        _list.Columns.Add("檔案", 260, HorizontalAlignment.Left);
         _list.Columns.Add(_category == "建立" ? "狀態" : "結果", _category == "建立" ? 86 : 112, HorizontalAlignment.Left);
-        _list.Columns.Add("說明", 320, HorizontalAlignment.Left);
+        _list.Columns.Add("說明", 340, HorizontalAlignment.Left);
 
         _list.DrawColumnHeader += (_, e) => DrawHeader(e);
         _list.DrawItem += (_, e) =>
@@ -254,9 +254,9 @@ internal sealed class RecordPage : UserControl
 
         const int timeWidth = 145;
         const int referenceWidth = 125;
+        const int fileWidth = 260;
         var resultWidth = _category == "建立" ? 86 : 112;
         var clientWidth = Math.Max(760, _list.ClientSize.Width - 5);
-        var fileWidth = Math.Max(230, (int)(clientWidth * 0.30));
         var used = timeWidth + referenceWidth + fileWidth + resultWidth;
         var detailWidth = Math.Max(260, clientWidth - used);
 
@@ -358,8 +358,8 @@ internal sealed class RecordPage : UserControl
                 while (_list.Items.Count > _visible.Count)
                     _list.Items.RemoveAt(_list.Items.Count - 1);
 
-                // Fake zebra rows only fill unused visible slots. They never extend the
-                // scroll range beyond one page. Real rows replace these one-for-one.
+                // Fill only the remaining visible rows. Real rows replace these one-for-one,
+                // so the zebra placeholders never create scrolling before a real page is full.
                 if (_visible.Count < capacity)
                 {
                     var placeholders = capacity - _visible.Count;
