@@ -15,7 +15,7 @@ internal sealed class RecordPage : UserControl
     private readonly ComboBox _status = new();
     private readonly ListView _list = new();
     private readonly ImageList _rowHeightImages = new();
-    private readonly ToolTip _fileToolTip = new();
+    private readonly ToolTip _cellToolTip = new();
     private readonly List<ResultRow> _rows = new();
     private readonly List<ResultRow> _visible = new();
     private readonly Button _search;
@@ -113,12 +113,12 @@ internal sealed class RecordPage : UserControl
             if (_list.SelectedItems[0].Tag is ResultRow row)
                 ShowDetails(row);
         };
-        _list.MouseMove += (_, e) => UpdateFileTooltip(e.Location);
-        _list.MouseLeave += (_, _) => HideFileTooltip();
+        _list.MouseMove += (_, e) => UpdateCellTooltip(e.Location);
+        _list.MouseLeave += (_, _) => HideCellTooltip();
 
-        _fileToolTip.ShowAlways = true;
-        _fileToolTip.UseAnimation = false;
-        _fileToolTip.UseFading = false;
+        _cellToolTip.ShowAlways = true;
+        _cellToolTip.UseAnimation = false;
+        _cellToolTip.UseFading = false;
 
         LayoutPage();
     }
@@ -170,7 +170,7 @@ internal sealed class RecordPage : UserControl
         _list.Columns.Add("時間", 145, HorizontalAlignment.Left);
         _list.Columns.Add("參考編號", 125, HorizontalAlignment.Left);
         _list.Columns.Add("檔案", 260, HorizontalAlignment.Left);
-        _list.Columns.Add(_category == "建立" ? "狀態" : "結果", _category == "建立" ? 78 : 96, HorizontalAlignment.Left);
+        _list.Columns.Add(_category == "建立" ? "狀態" : "結果", _category == "建立" ? 78 : 90, HorizontalAlignment.Left);
         _list.Columns.Add("說明", 340, HorizontalAlignment.Left);
 
         _list.DrawColumnHeader += (_, e) => DrawHeader(e);
@@ -259,7 +259,7 @@ internal sealed class RecordPage : UserControl
         const int timeWidth = 145;
         const int referenceWidth = 125;
         const int fileWidth = 260;
-        var resultWidth = _category == "建立" ? 78 : 96;
+        var resultWidth = _category == "建立" ? 78 : 90;
         var clientWidth = Math.Max(760, _list.ClientSize.Width - 5);
         var used = timeWidth + referenceWidth + fileWidth + resultWidth;
         var detailWidth = Math.Max(260, clientWidth - used);
@@ -391,44 +391,56 @@ internal sealed class RecordPage : UserControl
         _list.Invalidate(true);
     }
 
-    private void UpdateFileTooltip(Point location)
+    private void UpdateCellTooltip(Point location)
     {
         var hit = _list.HitTest(location);
         if (hit.Item?.Tag is not ResultRow row || hit.SubItem is null)
         {
-            HideFileTooltip();
+            HideCellTooltip();
             return;
         }
 
         var subItemIndex = hit.Item.SubItems.IndexOf(hit.SubItem);
-        if (subItemIndex != 2)
+        string text;
+        int columnIndex;
+        if (subItemIndex == 2)
         {
-            HideFileTooltip();
+            text = row.FileName;
+            columnIndex = 2;
+        }
+        else if (subItemIndex == 4)
+        {
+            text = row.Detail;
+            columnIndex = 4;
+        }
+        else
+        {
+            HideCellTooltip();
             return;
         }
 
-        var availableWidth = Math.Max(1, _list.Columns[2].Width - 14);
-        var measuredWidth = TextRenderer.MeasureText(row.FileName, _list.Font,
+        var availableWidth = Math.Max(1, _list.Columns[columnIndex].Width - 14);
+        var measuredWidth = TextRenderer.MeasureText(text, _list.Font,
             new Size(int.MaxValue, 23), TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
         if (measuredWidth <= availableWidth)
         {
-            HideFileTooltip();
+            HideCellTooltip();
             return;
         }
 
-        var key = $"{hit.Item.Index}:{row.FileName}";
+        var key = $"{hit.Item.Index}:{columnIndex}:{text}";
         if (string.Equals(_activeTooltipKey, key, StringComparison.Ordinal)) return;
 
-        _fileToolTip.Hide(_list);
+        _cellToolTip.Hide(_list);
         _activeTooltipKey = key;
-        _fileToolTip.Show(row.FileName, _list, location.X + 14, location.Y + 18, 5000);
+        _cellToolTip.Show(text, _list, location.X + 14, location.Y + 18, 5000);
     }
 
-    private void HideFileTooltip()
+    private void HideCellTooltip()
     {
         if (_activeTooltipKey is null) return;
         _activeTooltipKey = null;
-        _fileToolTip.Hide(_list);
+        _cellToolTip.Hide(_list);
     }
 
     private void ShowDetails(ResultRow row)
@@ -445,7 +457,7 @@ internal sealed class RecordPage : UserControl
         _disposed = true;
         if (disposing)
         {
-            _fileToolTip.Dispose();
+            _cellToolTip.Dispose();
             _rowHeightImages.Dispose();
         }
         base.Dispose(disposing);
