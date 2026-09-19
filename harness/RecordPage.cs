@@ -82,12 +82,11 @@ internal sealed class RecordPage : UserControl
         };
         VisibleChanged += (_, _) =>
         {
-            if (Visible) QueuePlaceholderRefresh();
-        };
-        _list.SizeChanged += (_, _) =>
-        {
-            LayoutColumns();
-            QueuePlaceholderRefresh();
+            if (Visible)
+            {
+                LayoutPage();
+                QueuePlaceholderRefresh();
+            }
         };
         _keyword.KeyDown += (_, e) =>
         {
@@ -322,7 +321,7 @@ internal sealed class RecordPage : UserControl
 
     private void QueuePlaceholderRefresh()
     {
-        if (_disposed || _placeholderRefreshQueued || !Visible || !IsHandleCreated) return;
+        if (_disposed || _updatingList || _placeholderRefreshQueued || !Visible || !IsHandleCreated) return;
         _placeholderRefreshQueued = true;
         BeginInvoke((Action)(() =>
         {
@@ -344,8 +343,6 @@ internal sealed class RecordPage : UserControl
                 while (_list.Items.Count > _visible.Count)
                     _list.Items.RemoveAt(_list.Items.Count - 1);
 
-                // Leave a small safety margin so adding placeholder rows cannot make the
-                // native control toggle its scrollbar and recursively relayout the tab page.
                 var capacity = Math.Max(1, (_list.ClientSize.Height - 32) / 23);
                 var placeholders = Math.Max(0, capacity - _visible.Count);
                 for (var i = 0; i < placeholders; i++)
