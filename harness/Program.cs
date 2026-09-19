@@ -16,6 +16,8 @@ internal static class Program
         var form = new MainForm();
         UiTheme.EnlargeTabs(form);
         RenameMainTab(form);
+        if (AcceptanceMode.IsEnabled)
+            AcceptanceMode.Apply(form);
         Application.Run(form);
     }
 
@@ -28,18 +30,31 @@ internal static class Program
         };
         UiTheme.EnlargeTabs(form);
         RenameMainTab(form);
+        AcceptanceMode.Apply(form, 120);
         form.Show();
         Application.DoEvents();
 
         var tabs = FindTabControl(form) ?? throw new InvalidOperationException("找不到主頁籤控制項。");
         if (tabs.TabPages.Count < 3) throw new InvalidOperationException("主頁籤數量不足。");
 
-        for (var pass = 0; pass < 8; pass++)
+        var sizes = new[]
         {
-            for (var index = 0; index < 3; index++)
+            new Size(900, 720),
+            new Size(1000, 780),
+            new Size(1280, 900)
+        };
+
+        foreach (var size in sizes)
+        {
+            form.ClientSize = size;
+            Application.DoEvents();
+            for (var pass = 0; pass < 4; pass++)
             {
-                tabs.SelectedIndex = index;
-                Application.DoEvents();
+                for (var index = 0; index < 3; index++)
+                {
+                    tabs.SelectedIndex = index;
+                    Application.DoEvents();
+                }
             }
         }
 
