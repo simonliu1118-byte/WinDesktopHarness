@@ -4,13 +4,13 @@ namespace WinDesktopHarness;
 
 internal sealed class RecordPage : UserControl
 {
-    private static readonly object PlaceholderRow = new();
     private readonly string _category;
     private readonly TextBox _keyword = new();
     private readonly ComboBox _range = new();
     private readonly ComboBox _status = new();
     private readonly ListView _list = new();
     private readonly ImageList _rowHeightImages = new();
+    private readonly ToolTip _fileToolTip = new();
     private readonly List<ResultRow> _rows = new();
     private readonly List<ResultRow> _visible = new();
     private readonly Button _search;
@@ -18,8 +18,7 @@ internal sealed class RecordPage : UserControl
     private readonly Label _keywordLabel;
     private readonly Label _rangeLabel;
     private readonly Label _statusLabel;
-    private bool _updatingList;
-    private bool _placeholderRefreshQueued;
+    private string? _activeTooltipText;
     private bool _disposed;
 
     public RecordPage(string category)
@@ -75,18 +74,10 @@ internal sealed class RecordPage : UserControl
         ConfigureList();
         Controls.Add(_list);
 
-        Resize += (_, _) =>
-        {
-            LayoutPage();
-            QueuePlaceholderRefresh();
-        };
+        Resize += (_, _) => LayoutPage();
         VisibleChanged += (_, _) =>
         {
-            if (Visible)
-            {
-                LayoutPage();
-                QueuePlaceholderRefresh();
-            }
+            if (Visible) LayoutPage();
         };
         _keyword.KeyDown += (_, e) =>
         {
@@ -94,18 +85,14 @@ internal sealed class RecordPage : UserControl
             ApplyFilter();
             e.SuppressKeyPress = true;
         };
-        _list.MouseDown += (_, e) =>
-        {
-            var hit = _list.HitTest(e.Location);
-            if (ReferenceEquals(hit.Item?.Tag, PlaceholderRow))
-                _list.SelectedItems.Clear();
-        };
         _list.DoubleClick += (_, _) =>
         {
             if (_list.SelectedItems.Count != 1) return;
             if (_list.SelectedItems[0].Tag is ResultRow row)
                 ShowDetails(row);
         };
+        _list.MouseMove += (_, e) => UpdateFileTooltip(e.Location);
+        _list.MouseLeave += (_, _) => SetFileTooltip(null);
 
         LayoutPage();
     }
@@ -156,9 +143,9 @@ internal sealed class RecordPage : UserControl
 
         _list.Columns.Add("時間", 145, HorizontalAlignment.Left);
         _list.Columns.Add("參考編號", 125, HorizontalAlignment.Left);
-        _list.Columns.Add("檔案", 260, HorizontalAlignment.Left);
-        _list.Columns.Add(_category == "建立" ? "狀態" : "結果", 125, HorizontalAlignment.Left);
-        _list.Columns.Add("說明", 280, HorizontalAlignment.Left);
+        _list.Columns.Add("檔案", 280, HorizontalAlignment.Left);
+        _list.Columns.Add(_category == "建立" ? "狀態" : "結果", _category == "建立" ? 86 : 112, HorizontalAlignment.Left);
+        _list.Columns.Add("說明", 320, HorizontalAlignment.Left);
 
         _list.DrawColumnHeader += (_, e) => DrawHeader(e);
         _list.DrawItem += (_, e) =>
@@ -183,8 +170,7 @@ internal sealed class RecordPage : UserControl
 
     private void DrawSubItem(DrawListViewSubItemEventArgs e)
     {
-        var placeholder = ReferenceEquals(e.Item.Tag, PlaceholderRow);
-        var selected = e.Item.Selected && !placeholder;
+        var selected = e.Item.Selected;
         var background = selected
             ? Color.FromArgb(224, 233, 244)
             : e.Item.Index % 2 == 0 ? Color.White : Color.FromArgb(239, 244, 249);
@@ -192,13 +178,10 @@ internal sealed class RecordPage : UserControl
         using (var brush = new SolidBrush(background))
             e.Graphics.FillRectangle(brush, e.Bounds);
 
-        if (!placeholder)
-        {
-            var textBounds = Rectangle.Inflate(e.Bounds, -6, 0);
-            TextRenderer.DrawText(e.Graphics, e.SubItem?.Text ?? string.Empty, _list.Font, textBounds,
-                UiTheme.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
-                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-        }
+        var textBounds = Rectangle.Inflate(e.Bounds, -6, 0);
+        TextRenderer.DrawText(e.Graphics, e.SubItem?.Text ?? string.Empty, _list.Font, textBounds,
+            UiTheme.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+            TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 
         using var pen = new Pen(Color.FromArgb(205, 205, 205));
         e.Graphics.DrawLine(pen, e.Bounds.Right - 1, e.Bounds.Top, e.Bounds.Right - 1, e.Bounds.Bottom);
@@ -242,12 +225,22 @@ internal sealed class RecordPage : UserControl
     private void LayoutColumns()
     {
         if (_disposed || _list.Columns.Count != 5) return;
-        _list.Columns[0].Width = 145;
-        _list.Columns[1].Width = 125;
-        _list.Columns[2].Width = Math.Max(210, (int)(_list.ClientSize.Width * 0.28));
-        _list.Columns[3].Width = 125;
-        var used = _list.Columns[0].Width + _list.Columns[1].Width + _list.Columns[2].Width + _list.Columns[3].Width;
-        _list.Columns[4].Width = Math.Max(180, _list.ClientSize.Width - used - 5);
+
+        const int timeWidth = 145;
+        const int referenceWidth = 125;
+        var resultWidth = _category == "建立" ? 86 : 112;
+        var clientWidth = Math.Max(760, _list.ClientSize.Width - 5);
+
+        // Keep filename useful, but give most flexible space to the explanation column.
+        var fileWidth = Math.Max(230, (int)(clientWidth * 0.30));
+        var used = timeWidth + referenceWidth + fileWidth + resultWidth;
+        var detailWidth = Math.Max(260, clientWidth - used);
+
+        _list.Columns[0].Width = timeWidth;
+        _list.Columns[1].Width = referenceWidth;
+        _list.Columns[2].Width = fileWidth;
+        _list.Columns[3].Width = resultWidth;
+        _list.Columns[4].Width = detailWidth;
     }
 
     private void ApplyFilter()
@@ -284,88 +277,61 @@ internal sealed class RecordPage : UserControl
 
     private void RefreshList()
     {
-        if (_disposed || _updatingList) return;
-        _updatingList = true;
+        if (_disposed) return;
+
+        _list.BeginUpdate();
         try
         {
-            _list.BeginUpdate();
-            try
+            _list.Items.Clear();
+            foreach (var row in _visible)
             {
-                _list.Items.Clear();
-                foreach (var row in _visible)
+                var item = new ListViewItem((row.CreatedAt ?? DateTime.Now).ToString("yyyy/MM/dd HH:mm"))
                 {
-                    var item = new ListViewItem((row.CreatedAt ?? DateTime.Now).ToString("yyyy/MM/dd HH:mm"))
-                    {
-                        Tag = row
-                    };
-                    item.SubItems.Add(row.Reference);
-                    item.SubItems.Add(row.FileName);
-                    item.SubItems.Add(row.Status);
-                    item.SubItems.Add(row.Detail);
-                    _list.Items.Add(item);
-                }
-            }
-            finally
-            {
-                _list.EndUpdate();
+                    Tag = row
+                };
+                item.SubItems.Add(row.Reference);
+                item.SubItems.Add(row.FileName);
+                item.SubItems.Add(row.Status);
+                item.SubItems.Add(row.Detail);
+                _list.Items.Add(item);
             }
         }
         finally
         {
-            _updatingList = false;
-        }
-
-        QueuePlaceholderRefresh();
-        _list.Invalidate(true);
-    }
-
-    private void QueuePlaceholderRefresh()
-    {
-        if (_disposed || _updatingList || _placeholderRefreshQueued || !Visible || !IsHandleCreated) return;
-        _placeholderRefreshQueued = true;
-        BeginInvoke((Action)(() =>
-        {
-            _placeholderRefreshQueued = false;
-            if (_disposed || !Visible || _updatingList) return;
-            FillPlaceholderRowsSafe();
-        }));
-    }
-
-    private void FillPlaceholderRowsSafe()
-    {
-        if (_disposed || _updatingList || _list.ClientSize.Height <= 0) return;
-        _updatingList = true;
-        try
-        {
-            _list.BeginUpdate();
-            try
-            {
-                while (_list.Items.Count > _visible.Count)
-                    _list.Items.RemoveAt(_list.Items.Count - 1);
-
-                var capacity = Math.Max(1, (_list.ClientSize.Height - 32) / 23);
-                var placeholders = Math.Max(0, capacity - _visible.Count);
-                for (var i = 0; i < placeholders; i++)
-                {
-                    var blank = new ListViewItem(string.Empty) { Tag = PlaceholderRow };
-                    blank.SubItems.Add(string.Empty);
-                    blank.SubItems.Add(string.Empty);
-                    blank.SubItems.Add(string.Empty);
-                    blank.SubItems.Add(string.Empty);
-                    _list.Items.Add(blank);
-                }
-            }
-            finally
-            {
-                _list.EndUpdate();
-            }
-        }
-        finally
-        {
-            _updatingList = false;
+            _list.EndUpdate();
         }
 
         _list.Invalidate(true);
+    }
+
+    private void UpdateFileTooltip(Point location)
+    {
+        var hit = _list.HitTest(location);
+        if (hit.Item?.Tag is not ResultRow row || hit.SubItem is null)
+        {
+            SetFileTooltip(null);
+            return;
+        }
+
+        var subItemIndex = hit.Item.SubItems.IndexOf(hit.SubItem);
+        if (subItemIndex != 2)
+        {
+            SetFileTooltip(null);
+            return;
+        }
+
+        var availableWidth = Math.Max(1, _list.Columns[2].Width - 14);
+        var measuredWidth = TextRenderer.MeasureText(row.FileName, _list.Font,
+            new Size(int.MaxValue, 23), TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
+
+        SetFileTooltip(measuredWidth > availableWidth ? row.FileName : null);
+    }
+
+    private void SetFileTooltip(string? text)
+    {
+        if (string.Equals(_activeTooltipText, text, StringComparison.Ordinal)) return;
+        _activeTooltipText = text;
+        _fileToolTip.SetToolTip(_list, text ?? string.Empty);
     }
 
     private void ShowDetails(ResultRow row)
@@ -380,7 +346,11 @@ internal sealed class RecordPage : UserControl
     protected override void Dispose(bool disposing)
     {
         _disposed = true;
-        if (disposing) _rowHeightImages.Dispose();
+        if (disposing)
+        {
+            _fileToolTip.Dispose();
+            _rowHeightImages.Dispose();
+        }
         base.Dispose(disposing);
     }
 }
