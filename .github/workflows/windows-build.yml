@@ -21,7 +21,7 @@ jobs:
         shell: pwsh
         run: dotnet build harness/WinDesktopHarness.csproj -c Release
 
-      - name: Smoke test tab switching
+      - name: Smoke test tabs, resize, and dense record lists
         shell: pwsh
         timeout-minutes: 2
         run: dotnet run --project harness/WinDesktopHarness.csproj -c Release --no-build -- --tab-smoke-test
@@ -38,23 +38,41 @@ jobs:
           -p:DebugSymbols=false
           -o publish
 
-      - name: Package
+      - name: Package final acceptance kit
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifact | Out-Null
+          New-Item -ItemType Directory -Force artifact/sample-files | Out-Null
           Copy-Item publish/WinDesktopHarness.exe artifact/WinDesktopHarness.exe
-          @"
-          Windows Desktop Harness
+          Copy-Item acceptance/Start-Acceptance-Mode.cmd artifact/Start-Acceptance-Mode.cmd
+          Copy-Item acceptance/ACCEPTANCE_CHECKLIST.md artifact/ACCEPTANCE_CHECKLIST.md
 
-          This executable contains only synthetic UI test behavior.
-          Extract and run WinDesktopHarness.exe.
+          1..8 | ForEach-Object {
+            $name = ('sample-{0:00}-normal.jpg' -f $_)
+            Set-Content -Path (Join-Path artifact/sample-files $name) -Value '' -Encoding ascii
+          }
+          Set-Content -Path 'artifact/sample-files/sample-09-fail.jpg' -Value '' -Encoding ascii
+          Set-Content -Path 'artifact/sample-files/驗收用非常非常長的中文檔名_確認欄位截斷與排版_10.jpg' -Value '' -Encoding utf8
+
+          @"
+          Windows Desktop Harness — Final Acceptance Kit
+
+          Normal UI:
+            Run WinDesktopHarness.exe
+
+          Dense synthetic record data:
+            Run Start-Acceptance-Mode.cmd
+
+          See ACCEPTANCE_CHECKLIST.md for the manual acceptance pass.
+          All included sample files and records are synthetic UI-test data.
           "@ | Set-Content artifact/README.txt -Encoding utf8
-          Compress-Archive -Path artifact/* -DestinationPath WinDesktopHarness-Windows-x64.zip -Force
+
+          Compress-Archive -Path artifact/* -DestinationPath WinDesktopHarness-Final-Acceptance.zip -Force
 
       - name: Upload test package
         uses: actions/upload-artifact@v4
         with:
-          name: WinDesktopHarness-Windows-x64
-          path: WinDesktopHarness-Windows-x64.zip
+          name: WinDesktopHarness-Final-Acceptance
+          path: WinDesktopHarness-Final-Acceptance.zip
           if-no-files-found: error
           retention-days: 7
