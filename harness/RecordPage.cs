@@ -1,9 +1,14 @@
 using System.Drawing;
+using System.Runtime.InteropServices;
 
 namespace WinDesktopHarness;
 
 internal sealed class RecordPage : UserControl
 {
+    private const int LvmFirst = 0x1000;
+    private const int LvmGetCountPerPage = LvmFirst + 40;
+    private static readonly object PlaceholderRow = new();
+
     private readonly string _category;
     private readonly TextBox _keyword = new();
     private readonly ComboBox _range = new();
@@ -19,7 +24,12 @@ internal sealed class RecordPage : UserControl
     private readonly Label _rangeLabel;
     private readonly Label _statusLabel;
     private string? _activeTooltipText;
+    private bool _placeholderRefreshQueued;
+    private bool _updatingPlaceholders;
     private bool _disposed;
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
     public RecordPage(string category)
     {
@@ -74,16 +84,28 @@ internal sealed class RecordPage : UserControl
         ConfigureList();
         Controls.Add(_list);
 
-        Resize += (_, _) => LayoutPage();
+        Resize += (_, _) =>
+        {
+            LayoutPage();
+            QueuePlaceholderRefresh();
+        };
         VisibleChanged += (_, _) =>
         {
-            if (Visible) LayoutPage();
+            if (!Visible) return;
+            LayoutPage();
+            QueuePlaceholderRefresh();
         };
         _keyword.KeyDown += (_, e) =>
         {
             if (e.KeyCode != Keys.Enter) return;
             ApplyFilter();
             e.SuppressKeyPress = true;
+        };
+        _list.MouseDown += (_, e) =>
+        {
+            var hit = _list.HitTest(e.Location);
+            if (ReferenceEquals(hit.Item?.Tag, PlaceholderRow))
+                _list.SelectedItems.Clear();
         };
         _list.DoubleClick += (_, _) =>
         {
@@ -170,7 +192,8 @@ internal sealed class RecordPage : UserControl
 
     private void DrawSubItem(DrawListViewSubItemEventArgs e)
     {
-        var selected = e.Item.Selected;
+        var placeholder = ReferenceEquals(e.Item.Tag, PlaceholderRow);
+        var selected = e.Item.Selected && !placeholder;
         var background = selected
             ? Color.FromArgb(224, 233, 244)
             : e.Item.Index % 2 == 0 ? Color.White : Color.FromArgb(239, 244, 249);
@@ -178,10 +201,13 @@ internal sealed class RecordPage : UserControl
         using (var brush = new SolidBrush(background))
             e.Graphics.FillRectangle(brush, e.Bounds);
 
-        var textBounds = Rectangle.Inflate(e.Bounds, -6, 0);
-        TextRenderer.DrawText(e.Graphics, e.SubItem?.Text ?? string.Empty, _list.Font, textBounds,
-            UiTheme.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
-            TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        if (!placeholder)
+        {
+            var textBounds = Rectangle.Inflate(e.Bounds, -6, 0);
+            TextRenderer.DrawText(e.Graphics, e.SubItem?.Text ?? string.Empty, _list.Font, textBounds,
+                UiTheme.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        }
 
         using var pen = new Pen(Color.FromArgb(205, 205, 205));
         e.Graphics.DrawLine(pen, e.Bounds.Right - 1, e.Bounds.Top, e.Bounds.Right - 1, e.Bounds.Bottom);
@@ -230,8 +256,6 @@ internal sealed class RecordPage : UserControl
         const int referenceWidth = 125;
         var resultWidth = _category == "建立" ? 86 : 112;
         var clientWidth = Math.Max(760, _list.ClientSize.Width - 5);
-
-        // Keep filename useful, but give most flexible space to the explanation column.
         var fileWidth = Math.Max(230, (int)(clientWidth * 0.30));
         var used = timeWidth + referenceWidth + fileWidth + resultWidth;
         var detailWidth = Math.Max(260, clientWidth - used);
@@ -299,6 +323,65 @@ internal sealed class RecordPage : UserControl
         finally
         {
             _list.EndUpdate();
+        }
+
+        QueuePlaceholderRefresh();
+        _list.Invalidate(true);
+    }
+
+    private void QueuePlaceholderRefresh()
+    {
+        if (_disposed || _placeholderRefreshQueued || _updatingPlaceholders || !Visible || !IsHandleCreated) return;
+        _placeholderRefreshQueued = true;
+        BeginInvoke((Action)(() =>
+        {
+            _placeholderRefreshQueued = false;
+            if (_disposed || !Visible || _updatingPlaceholders) return;
+            RefreshPlaceholderRows();
+        }));
+    }
+
+    private void RefreshPlaceholderRows()
+    {
+        if (_disposed || _updatingPlaceholders || !_list.IsHandleCreated) return;
+
+        _updatingPlaceholders = true;
+        try
+        {
+            var capacity = (int)SendMessage(_list.Handle, LvmGetCountPerPage, IntPtr.Zero, IntPtr.Zero);
+            if (capacity <= 0)
+                capacity = Math.Max(1, (_list.ClientSize.Height - 30) / 23);
+
+            _list.BeginUpdate();
+            try
+            {
+                while (_list.Items.Count > _visible.Count)
+                    _list.Items.RemoveAt(_list.Items.Count - 1);
+
+                // Fake zebra rows only fill unused visible slots. They never extend the
+                // scroll range beyond one page. Real rows replace these one-for-one.
+                if (_visible.Count < capacity)
+                {
+                    var placeholders = capacity - _visible.Count;
+                    for (var i = 0; i < placeholders; i++)
+                    {
+                        var blank = new ListViewItem(string.Empty) { Tag = PlaceholderRow };
+                        blank.SubItems.Add(string.Empty);
+                        blank.SubItems.Add(string.Empty);
+                        blank.SubItems.Add(string.Empty);
+                        blank.SubItems.Add(string.Empty);
+                        _list.Items.Add(blank);
+                    }
+                }
+            }
+            finally
+            {
+                _list.EndUpdate();
+            }
+        }
+        finally
+        {
+            _updatingPlaceholders = false;
         }
 
         _list.Invalidate(true);
