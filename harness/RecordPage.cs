@@ -433,7 +433,10 @@ internal sealed class RecordPage : UserControl
 
         _cellToolTip.Hide(_list);
         _activeTooltipKey = key;
-        _cellToolTip.Show(text, _list, location.X + 14, location.Y + 18, 5000);
+        var cellBounds = hit.SubItem.Bounds;
+        var tooltipX = Math.Max(2, cellBounds.Left + 4);
+        var tooltipY = Math.Max(2, cellBounds.Bottom + 3);
+        _cellToolTip.Show(text, _list, tooltipX, tooltipY, 5000);
     }
 
     private void HideCellTooltip()
