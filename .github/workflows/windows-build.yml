@@ -21,6 +21,11 @@ jobs:
         shell: pwsh
         run: dotnet build harness/WinDesktopHarness.csproj -c Release
 
+      - name: Smoke test tab switching
+        shell: pwsh
+        timeout-minutes: 2
+        run: dotnet run --project harness/WinDesktopHarness.csproj -c Release --no-build -- --tab-smoke-test
+
       - name: Publish standalone Windows x64 executable
         shell: pwsh
         run: >-
